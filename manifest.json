@@ -1,7 +1,19 @@
 {
+	"name": "Redirector",
+	"version": "4.0.0-alpha.1",
+	"manifest_version": 3,
+	"update_url": "https://clients2.google.com/service/update2/crx",
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs6CrP+MgpVZO1IWiPcoVLKowpzmWGejZk0WuChpI3HyjrXHFhx5n9jDwZdel/51bWRr7ZL5ZPRgNswjNsW6298TyJBPgdeN8cylR8+5xiw5IR7NHMXxKhSI5EVnbruCogphsshpRi5i7cXnMbXDAbQ2fN2f5gLgAnxCcEbrTOfsT2JGJYc+fnxso1FoO4PGPZ3fnrKJP68D0PAA9wAQ234w8KOVx3CWNZ1mGyaOlU6+nAqG2I7El0wHycQDe0r9Fw05a1KVjJmrj0XuApUjpVdP4HnS+PmpPU3C3MHQGZ4fz11Mmnq7503UdylgM+ipTdi8xy7wQyne9WVbc5NUDBQIDAQAB",
 	"background": {
 		"service_worker": "js/background.js"
 	},
+	"content_scripts": [
+		{
+			"matches": ["<all_urls>"],
+			"js": ["js/content.js"],
+			"run_at": "document_start"
+        }
+    ],
 	"action": {
 		"default_icon": {
 			"128": "images/icon-light-theme-128.png",
@@ -25,8 +37,7 @@
 		"48": "images/icon-light-theme-48.png",
 		"64": "images/icon-light-theme-64.png"
 	},
-	"manifest_version": 3,
-	"name": "Redirector",
+
 	"options_ui": {
 		"page": "popup.html",
 		"open_in_tab": true
@@ -41,8 +52,5 @@
    ],
 	"host_permissions": [
 	   "<all_urls>"
-	],
-	"update_url": "https://clients2.google.com/service/update2/crx",
-	"version": "3.5.3",
-	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs6CrP+MgpVZO1IWiPcoVLKowpzmWGejZk0WuChpI3HyjrXHFhx5n9jDwZdel/51bWRr7ZL5ZPRgNswjNsW6298TyJBPgdeN8cylR8+5xiw5IR7NHMXxKhSI5EVnbruCogphsshpRi5i7cXnMbXDAbQ2fN2f5gLgAnxCcEbrTOfsT2JGJYc+fnxso1FoO4PGPZ3fnrKJP68D0PAA9wAQ234w8KOVx3CWNZ1mGyaOlU6+nAqG2I7El0wHycQDe0r9Fw05a1KVjJmrj0XuApUjpVdP4HnS+PmpPU3C3MHQGZ4fz11Mmnq7503UdylgM+ipTdi8xy7wQyne9WVbc5NUDBQIDAQAB"
+	]
 }
