@@ -378,6 +378,7 @@ chrome.storage.onChanged.addListener(monitorChanges);
 function createPartitionedRedirects(redirects) {
 	logCPR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
 
+	// One array is for rules without exceptions, and the other is for rules with.
 	var partitioned = [];
 	var partitionedExceptions = [];
 
@@ -405,9 +406,13 @@ function createPartitionedRedirects(redirects) {
 		}
 	}
 
-	partitioned = partitioned.concat(partitionedExceptions);
+	logCPR('Partitioned redirects: ' + JSON.stringify(partitioned));
+	logCPR('Partitioned redirects with exceptions: ' + JSON.stringify(partitionedExceptions));
 
-	logCPR('Partitioned redirects: ' + JSON.stringify(partitioned, null, 2));
+	// Rules with exceptions come first, so they will have lower priorities and will not interfere with rules that have no exceptions. The whole array is in order from lowest priority to highest.
+	partitioned = partitionedExceptions.concat(partitioned);
+
+	logCPR('Partitioned redirects combined: ' + JSON.stringify(partitioned, null, 2));
 	return partitioned;
 }
 
