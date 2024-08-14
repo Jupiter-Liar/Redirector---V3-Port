@@ -103,17 +103,17 @@ function logHS(msg, force) {
 	}
 }
 
-log.enabled = false; // Master switch to enable logging. If enabled, ALL logs will be printed.
+log.enabled = true; // Master switch to enable logging. If enabled, ALL logs will be printed.
 
 // What follows are switches for individual functions and sections, since the amount of logging has gone way up.
-logPreRL.enabled = false; // Logging for functions before redirection logic
-logQR.enabled = false; // Logging for queueRedirects
-logSRM.enabled = false; // Logging for sendRequestMessages
-logCR.enabled = false; // Logging for checkRedirects
-logMC.enabled = false; // Logging for monitorChanges
-logCF.enabled = false; // Logging for checkFilters
-logCPR.enabled = false; // Logging for createPartitionedRedirects
-logSURL.enabled = false; // Logging for setUpRedirectListener
+logPreRL.enabled = true; // Logging for functions before redirection logic
+logQR.enabled = true; // Logging for queueRedirects
+logSRM.enabled = true; // Logging for sendRequestMessages
+logCR.enabled = true; // Logging for checkRedirects
+logMC.enabled = true; // Logging for monitorChanges
+logCF.enabled = true; // Logging for createFilters
+logCPR.enabled = true; // Logging for createPartitionedRedirects
+logSURL.enabled = true; // Logging for setUpRedirectListener
 logCHSR.enabled = false; // Logging for checkHistoryStateRedirects
 logUpI.enabled = false; // Logging for updateIcon
 logCROA.enabled = false; // Logging for chrome.runtime.onMessage.addListener
@@ -174,176 +174,91 @@ function setIcon(image) {
 	});
 }
 
-// This is the first of a few new function, added after Einar's death. It redirects pages, or begins the process of routing other redirects to the content script.
-function queueRedirects(requestType, originalUrl, redirectUrl, tabId) {
-	logQR('Queue redirects called. Details: ' + JSON.stringify(requestType) + "; " + JSON.stringify(originalUrl) + "; " + JSON.stringify(redirectUrl) + "; " + JSON.stringify(tabId));
-
-	switch (requestType) {
-		case 'main_frame':
-			logQR('Handling main_frame redirection.');
-			// Update the main frame URL directly using the tabId
-			chrome.tabs.update(tabId, {
-				url: redirectUrl
-			}, function (tab) {
-				if (chrome.runtime.lastError) {
-					console.error('Error updating main frame:', chrome.runtime.lastError);
-				} else {
-					logQR('Redirected main frame. New URL: ' + redirectUrl);
-				}
-			});
-			break;
-
-		case 'sub_frame':
-		case 'stylesheet':
-		case 'script':
-		case 'image':
-		case 'object':
-		case 'xmlhttprequest':
-		case 'other':
-			logQR('Passing redirection to content script.');
-			sendRedirectMessage(tabId, requestType, originalUrl, redirectUrl);
-			break;
-
-		default:
-			logQR('Unhandled request type: ' + requestType);
-			break;
-	}
-}
-
-// This function sends redirects which can be handled by changing DOM code to a content script.
-function sendRedirectMessage(tabId, requestType, originalUrl, redirectUrl, retryCount = 0) {
-	const maxRetries = 3; // Set the maximum number of retries
-	const retryDelay = 1000; // Delay in milliseconds before retrying
-	logSRM('Passing redirection to content script for tab ID ' + tabId + '.');
-
-	chrome.tabs.sendMessage(tabId, {
-		action: 'redirect',
-		requestType: requestType,
-		originalUrl: originalUrl,
-		redirectUrl: redirectUrl
-	}, function (response) {
-		if (chrome.runtime.lastError) {
-			console.error('Error sending message to tab ' + tabId + ':', chrome.runtime.lastError.message);
-
-			if (retryCount < maxRetries) {
-				console.log(`Retrying (${retryCount + 1}/${maxRetries})...`);
-				setTimeout(() => {
-					sendRedirectMessage(tabId, requestType, originalUrl, redirectUrl, retryCount + 1);
-				}, retryDelay);
-			} else {
-				console.error('Max retries reached. Message could not be sent.');
-			}
-		} else {
-			logSRM('Response from content script on tab ' + tabId + ':', response);
-		}
-	});
-}
-
-function sendRedirectMessage(tabId, requestType, originalUrl, redirectUrl, retryCount = 0) {
-	const maxRetries = 3; // Set the maximum number of retries
-	const retryDelay = 1000; // Delay in milliseconds before retrying
-
-	chrome.tabs.sendMessage(tabId, {
-		action: 'redirect',
-		requestType: requestType,
-		originalUrl: originalUrl,
-		redirectUrl: redirectUrl
-	}, (response) => {
-		if (chrome.runtime.lastError) {
-			// Log the error object in a more readable format
-			console.error('Error sending message:', chrome.runtime.lastError.message);
-
-			if (retryCount < maxRetries) {
-				console.log(`Retrying (${retryCount + 1}/${maxRetries})...`);
-				setTimeout(() => {
-					sendRedirectMessage(tabId, requestType, originalUrl, redirectUrl, retryCount + 1);
-				}, retryDelay);
-			} else {
-				console.error('Max retries reached. Message could not be sent.');
-			}
-		} else {
-			console.log('Message sent successfully:', response);
-		}
-	});
-}
-
 // This is the actual function that gets called for each request and must
 // decide whether or not we want to redirect.
-function checkRedirects(details) {
-	logCR('Received request details: ' + JSON.stringify(details));
-
-	const tabId = details.tabId;
-	logCR('Tab ID: ' + JSON.stringify(tabId));
-
-	// We only allow GET requests to be redirected, don't want to accidentally redirect
-	// sensitive POST parameters
-	if (details.method != 'GET') {
-		logCR('Request method is not GET: ' + details.method);
-		return {};
-	}
-	logCR('Checking redirect for: ' + details.type + ': ' + details.url);
-
-	var list = partitionedRedirects[details.type];
-	if (!list) {
-		logCR('No redirect rules found for type: ' + details.type);
-		return {};
-	}
-	logCR('Redirect rules list: ' + JSON.stringify(list));
-
-	var timestamp = ignoreNextRequest[details.url];
-	if (timestamp) {
-		logCR('Ignoring ' + details.url + ', was just redirected ' + (new Date().getTime() - timestamp) + 'ms ago');
-		delete ignoreNextRequest[details.url];
-		return {};
-	}
-
-	for (var i = 0; i < list.length; i++) {
-		var r = list[i];
-		logCR('Checking rule: ' + JSON.stringify(r));
-		var result = r.getMatch(details.url);
-		logCR('Match result for URL ' + details.url + ': ' + JSON.stringify(result));
-
-		if (result.isMatch) {
-			// Check if we're stuck in a loop where we keep redirecting this,
-			// in that case ignore!
-			var data = justRedirected[details.url];
-			var threshold = 3000; // 3 seconds
-
-			if (!data || ((new Date().getTime() - data.timestamp) > threshold)) { // Obsolete after 3 seconds
-				justRedirected[details.url] = {
-					timestamp: new Date().getTime(),
-					count: 1
-				};
-				logCR('First redirection for ' + details.url + ', recording timestamp and count.');
-			} else {
-				data.count++;
-				justRedirected[details.url] = data;
-				logCR('Incremented redirection count for ' + details.url + ': ' + data.count);
-
-				if (data.count >= redirectThreshold) {
-					logCR('Ignoring ' + details.url + ' because it has been redirected ' + data.count + ' times in the last ' + threshold + 'ms');
-					return {};
-				}
-			}
-
-			logCR('Redirecting ' + details.url + ' ===> ' + result.redirectTo + ', type: ' + details.type + ', pattern: ' + r.includePattern + ', Rule: ' + r.description);
-			if (enableNotifications) {
-				logCR('Sending notification for redirection.');
-				sendNotifications(r, details.url, result.redirectTo);
-			}
-			ignoreNextRequest[result.redirectTo] = new Date().getTime();
-			logCR('Added ' + result.redirectTo + ' to ignoreNextRequest with timestamp ' + new Date().getTime());
-
-			// Pass the type to queueRedirects for handling
-			return queueRedirects(details.type, details.url, result.redirectTo, tabId);
-		} else {
-			logCR('No match for rule: ' + JSON.stringify(r) + ' for URL: ' + details.url);
-		}
-	}
-
-	logCR('No matching redirect rule found for URL: ' + details.url);
-	return {};
-}
+//function checkRedirects(details) {
+//
+//	logCR('Received request details: ' + JSON.stringify(details));
+//
+//	const tabId = details.tabId;
+//	logCR('Tab ID: ' + JSON.stringify(tabId));
+//
+//	// Ignore requests during the prerender lifecycle phase
+//	if (details.documentLifecycle === 'prerender') {
+//		logCR('Request during prerender phase, ignoring.');
+//		return {};
+//	}
+//
+//	// We only allow GET requests to be redirected, don't want to accidentally redirect
+//	// sensitive POST parameters
+//	if (details.method != 'GET') {
+//		logCR('Request method is not GET: ' + details.method);
+//		return {};
+//	}
+//
+//	logCR('Checking redirect for: ' + details.type + ': ' + details.url);
+//
+//	var list = partitionedRedirects[details.type];
+//	if (!list) {
+//		logCR('No redirect rules found for type: ' + details.type);
+//		return {};
+//	}
+//	logCR('Redirect rules list: ' + JSON.stringify(list));
+//
+//	var timestamp = ignoreNextRequest[details.url];
+//	if (timestamp) {
+//		logCR('Ignoring ' + details.url + ', was just redirected ' + (new Date().getTime() - timestamp) + 'ms ago');
+//		delete ignoreNextRequest[details.url];
+//		return {};
+//	}
+//
+//	for (var i = 0; i < list.length; i++) {
+//		var r = list[i];
+//		logCR('Checking rule: ' + JSON.stringify(r));
+//		var result = r.getMatch(details.url);
+//		logCR('Match result for URL ' + details.url + ': ' + JSON.stringify(result));
+//
+//		if (result.isMatch) {
+//			// Check if we're stuck in a loop where we keep redirecting this,
+//			// in that case 																												ignore!
+//			var data = justRedirected[details.url];
+//			var threshold = 3000; // 3 seconds
+//
+//			if (!data || ((new Date().getTime() - data.timestamp) > threshold)) { // Obsolete after 3 seconds
+//				justRedirected[details.url] = {
+//					timestamp: new Date().getTime(),
+//					count: 1
+//				};
+//				logCR('First redirection for ' + details.url + ', recording timestamp and count.');
+//			} else {
+//				data.count++;
+//				justRedirected[details.url] = data;
+//				logCR('Incremented redirection count for ' + details.url + ': ' + data.count);
+//
+//				if (data.count >= redirectThreshold) {
+//					logCR('Ignoring ' + details.url + ' because it has been redirected ' + data.count + ' times in the last ' + threshold + 'ms');
+//					return {};
+//				}
+//			}
+//
+//			logCR('Redirecting ' + details.url + ' ===> ' + result.redirectTo + ', type: ' + details.type + ', pattern: ' + r.includePattern + ', Rule: ' + r.description);
+//			if (enableNotifications) {
+//				logCR('Sending notification for redirection.');
+//				sendNotifications(r, details.url, result.redirectTo);
+//			}
+//			ignoreNextRequest[result.redirectTo] = new Date().getTime();
+//			logCR('Added ' + result.redirectTo + ' to ignoreNextRequest with timestamp ' + new Date().getTime());
+//
+//			// Pass the type to queueRedirects for handling
+//			return queueRedirects(details.type, details.url, result.redirectTo, tabId);
+//		} else {
+//			logCR('No match for rule: ' + JSON.stringify(r) + ' for URL: ' + details.url);
+//		}
+//	}
+//
+//	logCR('No matching redirect rule found for URL: ' + details.url);
+//	return {};
+//}
 
 // Monitor changes in data, and setup everything again.
 // This could probably be optimized to not do everything on every change
@@ -358,8 +273,8 @@ function monitorChanges(changes, namespace) {
 
 		if (changes.disabled.newValue === true) {
 			logMC('Disabling Redirector, removing listeners');
-			chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
-			chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
+			//			chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
+			//			chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 		} else {
 			logMC('Enabling Redirector, setting up listeners');
 			setUpRedirectListener();
@@ -387,78 +302,123 @@ chrome.storage.onChanged.addListener(monitorChanges);
 
 // Creates a filter to pass to the listener so we don't have to run through
 // all the redirects for all the request types we don't have any redirects for anyway.
-function createFilter(redirects) {
-	logCF('Creating filter from redirects: ' + JSON.stringify(redirects));
+//function createFilter(redirects) {
+//	logCF('Creating filter from redirects: ' + JSON.stringify(redirects));
+//
+//	var types = [];
+//	for (var i = 0; i < redirects.length; i++) {
+//		var redirect = redirects[i];
+//		logCF('Processing redirect: ' + JSON.stringify(redirect));
+//
+//		redirect.appliesTo.forEach(function (type) {
+//			// Added this condition below as part of fix for issue 115 https://github.com/einaregilsson/Redirector/issues/115
+//			// Firefox considers responsive web images request as imageset. Chrome doesn't.
+//			// Chrome throws an error for imageset type, so let's add to 'types' only for the values that chrome or firefox supports
+//			if (chrome.webRequest.ResourceType[type.toUpperCase()] !== undefined) {
+//				if (types.indexOf(type) === -1) {
+//					types.push(type);
+//					logCF('Adding supported type to filter: ' + type);
+//				}
+//			} else {
+//				logCF('Skipping unsupported type: ' + type);
+//			}
+//		});
+//	}
+//	types.sort();
+//	logCF('Filter types sorted: ' + JSON.stringify(types));
+//
+//	var filter = {
+//		urls: ["https://*/*", "http://*/*"],
+//		types: types
+//	};
+//	logCF('Created filter: ' + JSON.stringify(filter));
+//
+//	return filter;
+//}
 
-	var types = [];
-	for (var i = 0; i < redirects.length; i++) {
-		var redirect = redirects[i];
-		logCF('Processing redirect: ' + JSON.stringify(redirect));
 
-		redirect.appliesTo.forEach(function (type) {
-			// Added this condition below as part of fix for issue 115 https://github.com/einaregilsson/Redirector/issues/115
-			// Firefox considers responsive web images request as imageset. Chrome doesn't.
-			// Chrome throws an error for imageset type, so let's add to 'types' only for the values that chrome or firefox supports
-			if (chrome.webRequest.ResourceType[type.toUpperCase()] !== undefined) {
-				if (types.indexOf(type) === -1) {
-					types.push(type);
-					logCF('Adding supported type to filter: ' + type);
-				}
-			} else {
-				logCF('Skipping unsupported type: ' + type);
-			}
-		});
-	}
-	types.sort();
-	logCF('Filter types sorted: ' + JSON.stringify(types));
+//A backup copy of createPartitionedRedirects, in case I break something and need to revert.
 
-	var filter = {
-		urls: ["https://*/*", "http://*/*"],
-		types: types
-	};
-	logCF('Created filter: ' + JSON.stringify(filter));
-
-	return filter;
-}
+// Creates partitioned redirects from the given redirects array.
+//function createPartitionedRedirects(redirects) {
+//	logCPR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
+//
+//	var partitioned = {};
+//
+//	for (var i = 0; i < redirects.length; i++) {
+//		var redirect = new Redirect(redirects[i]);
+//		logCPR('Processing redirect: ' + JSON.stringify(redirect));
+//		redirect.compile();
+//		logCPR('Compiled redirect: ' + JSON.stringify(redirect));
+//
+//		if (redirect.disabled) {
+//			logCPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
+//			continue; // Skip this redirect if it is disabled
+//		}
+//
+//		for (var j = 0; j < redirect.appliesTo.length; j++) {
+//			var requestType = redirect.appliesTo[j];
+//			logCPR('Processing request type: ' + requestType);
+//
+//			if (partitioned[requestType]) {
+//				partitioned[requestType].push(redirect);
+//				logCPR('Added redirect to existing partition for request type: ' + requestType);
+//			} else {
+//				partitioned[requestType] = [redirect];
+//				logCPR('Created new partition for request type: ' + requestType);
+//			}
+//		}
+//	}
+//
+//	logCPR('Partitioned redirects: ' + JSON.stringify(partitioned));
+//	return partitioned;
+//}
 
 // Creates partitioned redirects from the given redirects array.
 function createPartitionedRedirects(redirects) {
 	logCPR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
 
-	var partitioned = {};
+	var partitioned = [];
+	var partitionedExceptions = [];
 
 	for (var i = 0; i < redirects.length; i++) {
 		var redirect = new Redirect(redirects[i]);
+
+		if (redirect.disabled) {
+			logCPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
+			continue; // Skip this redirect if it is disabled
+		}
+
+		//		logCPR('Redirect: ' + redirect);
+
 		logCPR('Processing redirect: ' + JSON.stringify(redirect));
-		redirect.compile();
+		redirect = redirect.compileB();
 		logCPR('Compiled redirect: ' + JSON.stringify(redirect));
 
-		for (var j = 0; j < redirect.appliesTo.length; j++) {
-			var requestType = redirect.appliesTo[j];
-			logCPR('Processing request type: ' + requestType);
-
-			if (partitioned[requestType]) {
-				partitioned[requestType].push(redirect);
-				logCPR('Added redirect to existing partition for request type: ' + requestType);
-			} else {
-				partitioned[requestType] = [redirect];
-				logCPR('Created new partition for request type: ' + requestType);
-			}
+		// Check if compiledRedirect is an array
+		if (Array.isArray(redirect)) {
+			// Use spread operator to add all elements of redirect to partitioned
+			partitionedExceptions.unshift(...redirect);
+		} else {
+			// Add single compiledRedirect to partitioned
+			partitioned.unshift(redirect);
 		}
 	}
 
-	logCPR('Partitioned redirects: ' + JSON.stringify(partitioned));
+	partitioned = partitioned.concat(partitionedExceptions);
+
+	logCPR('Partitioned redirects: ' + JSON.stringify(partitioned, null, 2));
 	return partitioned;
 }
 
 // Sets up the listener, partitions the redirects, creates the appropriate filters etc.
 function setUpRedirectListener() {
-	logSURL('Setting up redirect listener');
+	//	logSURL('Setting up redirect listener');
 
 	// Unsubscribe first, in case there are changes...
-	logSURL('Removing existing listeners');
-	chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
-	chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
+	//	logSURL('Removing existing listeners');
+	// chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
+	// chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 
 	logSURL('Retrieving redirects from storage');
 	storageArea.get({
@@ -476,14 +436,74 @@ function setUpRedirectListener() {
 		partitionedRedirects = createPartitionedRedirects(redirects);
 		logSURL('Partitioned redirects: ' + JSON.stringify(partitionedRedirects));
 
-		logSURL('Creating filter');
-		var filter = createFilter(redirects);
-		logSURL('Created filter: ' + JSON.stringify(filter));
+		//		logSURL('Creating filter');
+		//		var filter = createFilter(redirects);
+		//		logSURL('Created filter: ' + JSON.stringify(filter));
 
-		logSURL('Setting filter for listener');
+		//		logSURL('Setting filter for listener');
 		// chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter, ["blocking"]); // Blocking is dead.
-		chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter);
-		logSURL('Added webRequest.onBeforeRequest listener with filter');
+		//		chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter);
+		//		logSURL('Added webRequest.onBeforeRequest listener with filter');
+
+		// Process each partitioned redirect
+		let allRules = [];
+
+		// Function to filter resource types
+		function filterResourceTypes(resourceTypes) {
+			const allowedResourceTypes = [
+                'csp_report',
+                'font',
+                'image',
+                'main_frame',
+                'media',
+                'object',
+                'other',
+                'ping',
+                'script',
+                'stylesheet',
+                'sub_frame',
+                'webbundle',
+                'websocket',
+                'webtransport',
+                'xmlhttprequest'
+            ];
+			return resourceTypes.filter(type => allowedResourceTypes.includes(type));
+		}
+
+		partitionedRedirects.forEach((redirect, index) => {
+			// Assign a unique ID for each rule
+			redirect.id = allRules.length + 1;
+			redirect.priority = redirect.id;
+
+			// Ensure resourceTypes only contains allowed values
+			if (redirect.condition && redirect.condition.resourceTypes) {
+				redirect.condition.resourceTypes = filterResourceTypes(redirect.condition.resourceTypes);
+			}
+
+			// Check if regexSubstitution is empty and replace it with "about:blank"
+			// This fixes an error where broken rules prevent changes.
+			if (redirect.action && redirect.action.type === "redirect") {
+				if (!redirect.action.redirect.regexSubstitution) {
+					redirect.action.redirect.regexSubstitution = "about:blank";
+				}
+			}
+
+			allRules.push(redirect);
+		});
+
+		logSURL('Formatted rules for declarativeNetRequest: ' + JSON.stringify(allRules));
+
+		// Update the declarativeNetRequest rules
+		chrome.declarativeNetRequest.updateDynamicRules({
+			removeRuleIds: allRules.map(rule => rule.id),
+			addRules: allRules
+		}, () => {
+			if (chrome.runtime.lastError) {
+				logSURL('Error setting up redirect listener: ' + chrome.runtime.lastError.message);
+			} else {
+				logSURL('Redirect listener setup completed with all rules applied.');
+			}
+		});
 
 		if (partitionedRedirects.history) {
 			logSURL('Adding HistoryState Listener');
@@ -500,7 +520,7 @@ function setUpRedirectListener() {
 			}
 			logSURL('History state filter: ' + JSON.stringify(historyFilter));
 
-			chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
+			// chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
 			logSURL('Added webNavigation.onHistoryStateUpdated listener with filter');
 		} else {
 			logSURL('No history state redirects defined');
@@ -509,23 +529,23 @@ function setUpRedirectListener() {
 }
 
 // Redirect URLs on places like Facebook and Twitter who don't do real reloads, only do ajax updates and push a new URL to the address bar...
-function checkHistoryStateRedirects(ev) {
-	logCHSR('Checking history state redirect for event: ' + JSON.stringify(ev));
-
-	ev.type = 'history';
-	ev.method = 'GET';
-	let result = checkRedirects(ev);
-	logCHSR('Redirect check result: ' + JSON.stringify(result));
-
-	if (result.redirectUrl) {
-		logCHSR('Redirecting tab ' + ev.tabId + ' to URL: ' + result.redirectUrl);
-		chrome.tabs.update(ev.tabId, {
-			url: result.redirectUrl
-		});
-	} else {
-		logCHSR('No redirect URL found for event: ' + JSON.stringify(ev));
-	}
-}
+//function checkHistoryStateRedirects(ev) {
+//	logCHSR('Checking history state redirect for event: ' + JSON.stringify(ev));
+//
+//	ev.type = 'history';
+//	ev.method = 'GET';
+//	let result = checkRedirects(ev);
+//	logCHSR('Redirect check result: ' + JSON.stringify(result));
+//
+//	if (result.redirectUrl) {
+//		logCHSR('Redirecting tab ' + ev.tabId + ' to URL: ' + result.redirectUrl);
+//		chrome.tabs.update(ev.tabId, {
+//			url: result.redirectUrl
+//		});
+//	} else {
+//		logCHSR('No redirect URL found for event: ' + JSON.stringify(ev));
+//	}
+//}
 
 // Sets on/off badge, and for Chrome updates dark/light mode icon
 function updateIcon() {

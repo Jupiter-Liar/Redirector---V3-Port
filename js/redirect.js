@@ -2,6 +2,14 @@ function Redirect(o) {
 	this._init(o);
 }
 
+function logRedJS(msg) {
+	if (logRedJS.enabled) {
+		console.log('REDIRECTOR RedJS [' + new Date().toISOString() + ']: ' + msg);
+	}
+}
+
+logRedJS.enabled = true;
+
 //temp, allow addon sdk to require this.
 if (typeof exports !== 'undefined') {
 	exports.Redirect = Redirect;
@@ -52,6 +60,59 @@ Redirect.prototype = {
 		if (excPattern) {
 			this._rxExclude = new RegExp(excPattern, 'gi');
 		}
+	},
+
+	compileB: function () {
+		logRedJS('Starting compilation of redirect rules.');
+
+		var incPattern = this._preparePatternB(this.includePattern, false);
+		logRedJS('Include pattern prepared: ' + incPattern);
+
+		var excPattern = this._preparePatternB(this.excludePattern, true);
+		logRedJS('Exclude pattern prepared: ' + excPattern);
+
+		var declarativeRule = {
+			id: null, // Will be set later
+			priority: null, // Default priority for rules without exceptions
+			action: {
+				type: 'redirect',
+				redirect: {
+					regexSubstitution: this._prepareRedirectUrl(this.redirectUrl)
+				}
+			},
+			condition: {
+				regexFilter: incPattern,
+				resourceTypes: this.appliesTo.map(this._mapRequestType)
+			}
+		};
+
+		logRedJS('Declarative rule created: ' + JSON.stringify(declarativeRule));
+
+		var rules = [];
+		rules.push(declarativeRule);
+
+		if (excPattern) {
+			declarativeRule.priority = 2; // Lower priority for rules with exceptions
+
+			var allowRule = {
+				id: null, // Will be set later
+				priority: null, // Lower priority for rules with exceptions
+				action: {
+					type: 'allow'
+				},
+				condition: {
+					regexFilter: excPattern,
+					resourceTypes: this.appliesTo.map(this._mapRequestType)
+				}
+			};
+
+			logRedJS('Allow rule created: ' + JSON.stringify(allowRule));
+			// logRedJS('Allow rule created: ' + allowRule);
+			rules.push(allowRule);
+		}
+
+		logRedJS('Final rules array: ' + JSON.stringify(rules));
+		return rules;
 	},
 
 	equals: function (redirect) {
@@ -210,6 +271,47 @@ Redirect.prototype = {
 			converted += '$';
 			return converted;
 		}
+	},
+
+	_preparePatternB: function (pattern, isExclude) {
+		if (!pattern) {
+			return null;
+		}
+		var converted = '^';
+		for (var i = 0; i < pattern.length; i++) {
+			var ch = pattern.charAt(i);
+			if ('()[]{}?.^$\\+'.indexOf(ch) != -1) {
+				converted += '\\' + ch;
+			} else if (ch == '*') {
+				converted += '(.*?)';
+			} else {
+				converted += ch;
+			}
+		}
+		converted += '$';
+		return converted;
+	},
+
+	_mapRequestType: function (type) {
+		var typeMap = {
+			main_frame: "main_frame",
+			sub_frame: "sub_frame",
+			stylesheet: "stylesheet",
+			script: "script",
+			image: "image",
+			imageset: "imageset",
+			object: "object",
+			xmlhttprequest: "xmlhttprequest",
+			history: "webNavigation", // Assuming 'history' refers to changes detected through webNavigation events
+			other: "other"
+		};
+
+		return typeMap[type] || 'other';
+	},
+
+	_prepareRedirectUrl: function (redirectUrl) {
+		// Assuming $1, $2 etc. need to be converted to \1, \2 etc.
+		return redirectUrl.replace(/\$(\d+)/g, '\\$1');
 	},
 
 	_init: function (o) {
