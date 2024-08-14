@@ -89,10 +89,9 @@ Redirect.prototype = {
 		logRedJS('Declarative rule created: ' + JSON.stringify(declarativeRule));
 
 		var rules = [];
-		rules.push(declarativeRule);
+
 
 		if (excPattern) {
-			declarativeRule.priority = 2; // Lower priority for rules with exceptions
 
 			var allowRule = {
 				id: null, // Will be set later
@@ -108,7 +107,10 @@ Redirect.prototype = {
 
 			logRedJS('Allow rule created: ' + JSON.stringify(allowRule));
 			// logRedJS('Allow rule created: ' + allowRule);
+			rules.push(declarativeRule);
 			rules.push(allowRule);
+		} else {
+			rules = declarativeRule;
 		}
 
 		logRedJS('Final rules array: ' + JSON.stringify(rules));
