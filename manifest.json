@@ -1,20 +1,9 @@
 {
-	"name": "Redirector MV3 alpha 3",
-	"version": "4.0.0.3",
-	"manifest_version": 3,
-	"update_url": "https://clients2.google.com/service/update2/crx",
-	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs6CrP+MgpVZO1IWiPcoVLKowpzmWGejZk0WuChpI3HyjrXHFhx5n9jDwZdel/51bWRr7ZL5ZPRgNswjNsW6298TyJBPgdeN8cylR8+5xiw5IR7NHMXxKhSI5EVnbruCogphsshpRi5i7cXnMbXDAbQ2fN2f5gLgAnxCcEbrTOfsT2JGJYc+fnxso1FoO4PGPZ3fnrKJP68D0PAA9wAQ234w8KOVx3CWNZ1mGyaOlU6+nAqG2I7El0wHycQDe0r9Fw05a1KVjJmrj0XuApUjpVdP4HnS+PmpPU3C3MHQGZ4fz11Mmnq7503UdylgM+ipTdi8xy7wQyne9WVbc5NUDBQIDAQAB",
 	"background": {
-		"service_worker": "js/background.js"
+		"persistent": true,
+		"scripts": ["js/redirect.js", "js/background.js"]
 	},
-	"content_scripts": [
-		{
-			"matches": ["<all_urls>"],
-			"js": ["js/content.js"],
-			"run_at": "document_start"
-        }
-    ],
-	"action": {
+	"browser_action": {
 		"default_icon": {
 			"128": "images/icon-light-theme-128.png",
 			"16": "images/icon-light-theme-16.png",
@@ -25,7 +14,36 @@
 			"64": "images/icon-light-theme-64.png"
 		},
 		"default_popup": "popup.html",
-		"default_title": "Redirector"
+		"default_title": "Redirector",
+		"theme_icons": [{
+			"dark": "images/icon-light-theme-16.png",
+			"light": "images/icon-dark-theme-16.png",
+			"size": 16
+      }, {
+			"dark": "images/icon-light-theme-19.png",
+			"light": "images/icon-dark-theme-19.png",
+			"size": 19
+      }, {
+			"dark": "images/icon-light-theme-32.png",
+			"light": "images/icon-dark-theme-32.png",
+			"size": 32
+      }, {
+			"dark": "images/icon-light-theme-38.png",
+			"light": "images/icon-dark-theme-38.png",
+			"size": 38
+      }, {
+			"dark": "images/icon-light-theme-48.png",
+			"light": "images/icon-dark-theme-48.png",
+			"size": 48
+      }, {
+			"dark": "images/icon-light-theme-64.png",
+			"light": "images/icon-dark-theme-64.png",
+			"size": 64
+      }, {
+			"dark": "images/icon-light-theme-128.png",
+			"light": "images/icon-dark-theme-128.png",
+			"size": 128
+      }]
 	},
 	"description": "Automatically redirect content based on user-defined rules.",
 	"icons": {
@@ -37,20 +55,14 @@
 		"48": "images/icon-light-theme-48.png",
 		"64": "images/icon-light-theme-64.png"
 	},
-
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAs6CrP+MgpVZO1IWiPcoVLKowpzmWGejZk0WuChpI3HyjrXHFhx5n9jDwZdel/51bWRr7ZL5ZPRgNswjNsW6298TyJBPgdeN8cylR8+5xiw5IR7NHMXxKhSI5EVnbruCogphsshpRi5i7cXnMbXDAbQ2fN2f5gLgAnxCcEbrTOfsT2JGJYc+fnxso1FoO4PGPZ3fnrKJP68D0PAA9wAQ234w8KOVx3CWNZ1mGyaOlU6+nAqG2I7El0wHycQDe0r9Fw05a1KVjJmrj0XuApUjpVdP4HnS+PmpPU3C3MHQGZ4fz11Mmnq7503UdylgM+ipTdi8xy7wQyne9WVbc5NUDBQIDAQAB",
+	"manifest_version": 2,
+	"name": "Redirector V2 Tester",
 	"options_ui": {
-		"page": "popup.html",
-		"open_in_tab": true
+		"chrome_style": true,
+		"page": "popup.html"
 	},
-	"permissions": [
-      "webRequest",
-      "webNavigation",
-      "storage",
-      "tabs",
-      "notifications",
-      "declarativeNetRequest"
-   ],
-	"host_permissions": [
-	   "<all_urls>"
-	]
+	"permissions": ["webRequest", "webRequestBlocking", "webNavigation", "storage", "tabs", "http://*/*", "https://*/*", "notifications"],
+	"update_url": "https://clients2.google.com/service/update2/crx",
+	"version": "3.5.3"
 }
