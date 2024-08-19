@@ -135,9 +135,10 @@ logPreRL('Browser detected: ' + (isFirefox ? 'Firefox' : 'Not Firefox'));
 var storageArea = chrome.storage.local;
 logPreRL('Initialized storage area');
 
-// Redirects partitioned by request type, so we have to run through
-// the minimum number of redirects for each request.
+// Redirects for basic declarative rules
 var processedRedirects = {};
+// Redirects for history state
+var processedHistoryRedirects = {};
 
 // Cache of URLs that have just been redirected to. They will not be redirected again, to
 // stop recursive redirects, and endless redirect chains.
@@ -174,91 +175,90 @@ function setIcon(image) {
 	});
 }
 
-// This is the actual function that gets called for each request and must
-// decide whether or not we want to redirect.
-//function checkRedirects(details) {
-//
-//	logCR('Received request details: ' + JSON.stringify(details));
-//
-//	const tabId = details.tabId;
-//	logCR('Tab ID: ' + JSON.stringify(tabId));
-//
-//	// Ignore requests during the prerender lifecycle phase
-//	if (details.documentLifecycle === 'prerender') {
-//		logCR('Request during prerender phase, ignoring.');
-//		return {};
-//	}
-//
-//	// We only allow GET requests to be redirected, don't want to accidentally redirect
-//	// sensitive POST parameters
-//	if (details.method != 'GET') {
-//		logCR('Request method is not GET: ' + details.method);
-//		return {};
-//	}
-//
-//	logCR('Checking redirect for: ' + details.type + ': ' + details.url);
-//
-//	var list = partitionedRedirects[details.type];
-//	if (!list) {
-//		logCR('No redirect rules found for type: ' + details.type);
-//		return {};
-//	}
-//	logCR('Redirect rules list: ' + JSON.stringify(list));
-//
-//	var timestamp = ignoreNextRequest[details.url];
-//	if (timestamp) {
-//		logCR('Ignoring ' + details.url + ', was just redirected ' + (new Date().getTime() - timestamp) + 'ms ago');
-//		delete ignoreNextRequest[details.url];
-//		return {};
-//	}
-//
-//	for (var i = 0; i < list.length; i++) {
-//		var r = list[i];
-//		logCR('Checking rule: ' + JSON.stringify(r));
-//		var result = r.getMatch(details.url);
-//		logCR('Match result for URL ' + details.url + ': ' + JSON.stringify(result));
-//
-//		if (result.isMatch) {
-//			// Check if we're stuck in a loop where we keep redirecting this,
-//			// in that case 																												ignore!
-//			var data = justRedirected[details.url];
-//			var threshold = 3000; // 3 seconds
-//
-//			if (!data || ((new Date().getTime() - data.timestamp) > threshold)) { // Obsolete after 3 seconds
-//				justRedirected[details.url] = {
-//					timestamp: new Date().getTime(),
-//					count: 1
-//				};
-//				logCR('First redirection for ' + details.url + ', recording timestamp and count.');
-//			} else {
-//				data.count++;
-//				justRedirected[details.url] = data;
-//				logCR('Incremented redirection count for ' + details.url + ': ' + data.count);
-//
-//				if (data.count >= redirectThreshold) {
-//					logCR('Ignoring ' + details.url + ' because it has been redirected ' + data.count + ' times in the last ' + threshold + 'ms');
-//					return {};
-//				}
-//			}
-//
-//			logCR('Redirecting ' + details.url + ' ===> ' + result.redirectTo + ', type: ' + details.type + ', pattern: ' + r.includePattern + ', Rule: ' + r.description);
-//			if (enableNotifications) {
-//				logCR('Sending notification for redirection.');
-//				sendNotifications(r, details.url, result.redirectTo);
-//			}
-//			ignoreNextRequest[result.redirectTo] = new Date().getTime();
-//			logCR('Added ' + result.redirectTo + ' to ignoreNextRequest with timestamp ' + new Date().getTime());
-//
-//			// Pass the type to queueRedirects for handling
-//			return queueRedirects(details.type, details.url, result.redirectTo, tabId);
-//		} else {
-//			logCR('No match for rule: ' + JSON.stringify(r) + ' for URL: ' + details.url);
-//		}
-//	}
-//
-//	logCR('No matching redirect rule found for URL: ' + details.url);
-//	return {};
-//}
+// This function was once responsible for all requests. Now it only pertains to history state redirects
+function checkRedirects(details) {
+
+	logCR('Received request details: ' + JSON.stringify(details));
+
+	const tabId = details.tabId;
+	logCR('Tab ID: ' + JSON.stringify(tabId));
+
+	// Ignore requests during the prerender lifecycle phase
+	if (details.documentLifecycle === 'prerender') {
+		logCR('Request during prerender phase, ignoring.');
+		return {};
+	}
+
+	// We only allow GET requests to be redirected, don't want to accidentally redirect
+	// sensitive POST parameters
+	if (details.method != 'GET') {
+		logCR('Request method is not GET: ' + details.method);
+		return {};
+	}
+
+	logCR('Checking redirect for: ' + details.type + ': ' + details.url);
+
+	var list = partitionedRedirects[details.type];
+	if (!list) {
+		logCR('No redirect rules found for type: ' + details.type);
+		return {};
+	}
+	logCR('Redirect rules list: ' + JSON.stringify(list));
+
+	var timestamp = ignoreNextRequest[details.url];
+	if (timestamp) {
+		logCR('Ignoring ' + details.url + ', was just redirected ' + (new Date().getTime() - timestamp) + 'ms ago');
+		delete ignoreNextRequest[details.url];
+		return {};
+	}
+
+	for (var i = 0; i < list.length; i++) {
+		var r = list[i];
+		logCR('Checking rule: ' + JSON.stringify(r));
+		var result = r.getMatch(details.url);
+		logCR('Match result for URL ' + details.url + ': ' + JSON.stringify(result));
+
+		if (result.isMatch) {
+			// Check if we're stuck in a loop where we keep redirecting this,
+			// in that case 																												ignore!
+			var data = justRedirected[details.url];
+			var threshold = 3000; // 3 seconds
+
+			if (!data || ((new Date().getTime() - data.timestamp) > threshold)) { // Obsolete after 3 seconds
+				justRedirected[details.url] = {
+					timestamp: new Date().getTime(),
+					count: 1
+				};
+				logCR('First redirection for ' + details.url + ', recording timestamp and count.');
+			} else {
+				data.count++;
+				justRedirected[details.url] = data;
+				logCR('Incremented redirection count for ' + details.url + ': ' + data.count);
+
+				if (data.count >= redirectThreshold) {
+					logCR('Ignoring ' + details.url + ' because it has been redirected ' + data.count + ' times in the last ' + threshold + 'ms');
+					return {};
+				}
+			}
+
+			logCR('Redirecting ' + details.url + ' ===> ' + result.redirectTo + ', type: ' + details.type + ', pattern: ' + r.includePattern + ', Rule: ' + r.description);
+			if (enableNotifications) {
+				logCR('Sending notification for redirection.');
+				sendNotifications(r, details.url, result.redirectTo);
+			}
+			ignoreNextRequest[result.redirectTo] = new Date().getTime();
+			logCR('Added ' + result.redirectTo + ' to ignoreNextRequest with timestamp ' + new Date().getTime());
+
+			// Pass the type to queueRedirects for handling
+			return queueRedirects(details.type, details.url, result.redirectTo, tabId);
+		} else {
+			logCR('No match for rule: ' + JSON.stringify(r) + ' for URL: ' + details.url);
+		}
+	}
+
+	logCR('No matching redirect rule found for URL: ' + details.url);
+	return {};
+}
 
 // Monitor changes in data, and setup everything again.
 // This could probably be optimized to not do everything on every change
@@ -274,7 +274,7 @@ function monitorChanges(changes, namespace) {
 		if (changes.disabled.newValue === true) {
 			logMC('Disabling Redirector, removing listeners');
 			//			chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
-			//			chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
+			chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 		} else {
 			logMC('Enabling Redirector, setting up listeners');
 			setUpDeclarativeRedirects();
@@ -382,6 +382,7 @@ function processRedirects(redirects) {
 	// One array is for rules without exceptions, and the other is for rules with.
 	var processed = [];
 	var processedExceptions = [];
+	var processedH = [];
 
 	for (var i = 0; i < redirects.length; i++) {
 		var redirect = new Redirect(redirects[i]);
@@ -407,14 +408,38 @@ function processRedirects(redirects) {
 		}
 	}
 
+	for (var i = 0; i < redirects.length; i++) {
+		var redirect = new Redirect(redirects[i]);
+
+		if (redirect.disabled) {
+			logPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
+			continue; // Skip this redirect if it is disabled
+		}
+
+		if (!redirect.appliesTo.includes('history')) {
+			logPR('Redirect does not apply to history, skipping: ' + JSON.stringify(redirect));
+			continue; // Skip this redirect if "history" is not included
+		}
+
+		//		logPR('Redirect: ' + redirect);
+
+		logPR('Applied history redirect: ' + JSON.stringify(redirect));
+
+		processedH.push(redirect);
+	}
+
 	logPR('Processed redirects: ' + JSON.stringify(processed));
 	logPR('Processed redirects with exceptions: ' + JSON.stringify(processedExceptions));
+	logPR('Processed history redirects: ' + JSON.stringify(processedH));
 
 	// Rules with exceptions come first, so they will have lower priorities and will not interfere with rules that have no exceptions. The whole array is in order from lowest priority to highest.
 	processed = processedExceptions.concat(processed);
 
 	logPR('Processed redirects combined: ' + JSON.stringify(processed, null, 2));
-	return processed;
+	return {
+		processed,
+		processedH
+	};
 }
 
 // Pulls the rules from storage and sets up declarative redirects.
@@ -425,7 +450,7 @@ function setUpDeclarativeRedirects() {
 	// Unsubscribe first, in case there are changes...
 	//	logSUDR('Removing existing listeners');
 	// chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
-	// chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
+	chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 
 	logSUDR('Retrieving redirects from storage');
 	storageArea.get({
@@ -440,8 +465,25 @@ function setUpDeclarativeRedirects() {
 		}
 
 		logSUDR('Processing redirects');
-		processedRedirects = processRedirects(redirects);
+
+		//		// Destructure the result and assign to existing variables
+		//		var {
+		//			processed: tempProcessed,
+		//			processedH: tempProcessedH
+		//		} = processRedirects(redirects);
+		//
+		//		// Assign to already declared variables
+		//		processedRedirects = tempProcessed;
+		//		processedHistoryRedirects = tempProcessedH;
+
+		// Destructure the result and assign to existing variables
+		({
+			processed: processedRedirects,
+			processedH: processedHistoryRedirects
+		} = processRedirects(redirects));
+
 		logSUDR('Processed redirects: ' + JSON.stringify(processedRedirects));
+		logSUDR('Processed history redirects: ' + JSON.stringify(processedHistoryRedirects));
 
 		//		logSUDR('Creating filter');
 		//		var filter = createFilter(redirects);
@@ -498,37 +540,45 @@ function setUpDeclarativeRedirects() {
 
 		// Function to apply rules and handle errors
 		function applyRules(rules) {
-			// First, remove all existing rules
-			chrome.declarativeNetRequest.updateDynamicRules({
-				removeRuleIds: rules.map(rule => rule.id) // Assuming you want to remove the same rules you're going to add
-			}, () => {
-				if (chrome.runtime.lastError) {
-					logSUDR('Error removing existing rules: ' + chrome.runtime.lastError.message);
-					return; // Exit the function if there's an error in removal
-				}
-
-				let appliedRules = [];
-
-				// Then, attempt to apply each rule individually
-				rules.forEach((rule, index) => {
-					try {
-						chrome.declarativeNetRequest.updateDynamicRules({
-							addRules: [rule]
-						}, () => {
-							if (chrome.runtime.lastError) {
-								logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
-							} else {
-								logSUDR(`Rule with id ${rule.id} applied successfully.`);
-								appliedRules.push(rule.id); // Keep track of successfully applied rules
-							}
-						});
-					} catch (error) {
-						logSUDR(`Error applying rule with id ${rule.id}: ${error.message}`);
+			// Create a list of promises for removing existing rules
+			let removeRulesPromise = new Promise((resolve, reject) => {
+				chrome.declarativeNetRequest.updateDynamicRules({
+					removeRuleIds: rules.map(rule => rule.id) // Remove all existing rules
+				}, () => {
+					if (chrome.runtime.lastError) {
+						logSUDR('Error removing existing rules: ' + chrome.runtime.lastError.message);
+						reject(new Error(chrome.runtime.lastError.message));
+					} else {
+						resolve();
 					}
 				});
-
-				logSUDR(`Applied rules: ${JSON.stringify(appliedRules)}`);
 			});
+
+			// Create a list of promises for applying each rule
+			let applyRulePromises = rules.map(rule => new Promise((resolve, reject) => {
+				chrome.declarativeNetRequest.updateDynamicRules({
+					addRules: [rule]
+				}, () => {
+					if (chrome.runtime.lastError) {
+						logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
+						reject(new Error(chrome.runtime.lastError.message));
+					} else {
+						logSUDR(`Rule with id ${rule.id} applied successfully.`);
+						resolve(rule.id); // Resolve with the rule id
+					}
+				});
+			}));
+
+			// Wait for all promises to complete
+			Promise.all([removeRulesPromise, ...applyRulePromises])
+				.then((results) => {
+					// results contains the ids of successfully applied rules
+					let appliedRules = results.slice(1); // Exclude the removeRulesPromise result
+					logSUDR(`Applied rules: ${JSON.stringify(appliedRules)}`);
+				})
+				.catch((error) => {
+					logSUDR(`Error during rule application: ${error.message}`);
+				});
 		}
 
 		// Function to get the problematic rule ID from the error message
@@ -541,22 +591,29 @@ function setUpDeclarativeRedirects() {
 		// Start the rule application process
 		applyRules(allRules);
 
-		if (processedRedirects.history) {
+		if (Array.isArray(processedHistoryRedirects)) {
+			logSUDR('processedHistoryRedirects is an array.');
+		}
+
+		if (processedHistoryRedirects.some(redirect => redirect.appliesTo.includes('history'))) {
 			logSUDR('Adding HistoryState Listener');
 
 			let historyFilter = {
 				url: []
 			};
-			for (let r of processedRedirects.history) {
+
+			for (let r of processedHistoryRedirects) {
+				// Check if `appliesTo` includes 'history'
 				let pattern = r._preparePattern(r.includePattern);
 				historyFilter.url.push({
 					urlMatches: pattern
 				});
 				logSUDR('Prepared history state pattern for filter: ' + pattern);
 			}
+
 			logSUDR('History state filter: ' + JSON.stringify(historyFilter));
 
-			// chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
+			chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
 			logSUDR('Added webNavigation.onHistoryStateUpdated listener with filter');
 		} else {
 			logSUDR('No history state redirects defined');
@@ -693,24 +750,25 @@ function validateRule(rule) {
 	return valid;
 }
 
-// Redirect URLs on places like Facebook and Twitter who don't do real reloads, only do ajax updates and push a new URL to the address bar...
-//function checkHistoryStateRedirects(ev) {
-//	logCHSR('Checking history state redirect for event: ' + JSON.stringify(ev));
-//
-//	ev.type = 'history';
-//	ev.method = 'GET';
-//	let result = checkRedirects(ev);
-//	logCHSR('Redirect check result: ' + JSON.stringify(result));
-//
-//	if (result.redirectUrl) {
-//		logCHSR('Redirecting tab ' + ev.tabId + ' to URL: ' + result.redirectUrl);
-//		chrome.tabs.update(ev.tabId, {
-//			url: result.redirectUrl
-//		});
-//	} else {
-//		logCHSR('No redirect URL found for event: ' + JSON.stringify(ev));
-//	}
-//}
+// Redirect URLs on places like Facebook and Twitter who don 't do real reloads, only do ajax updates and push a new URL to the address bar...
+
+function checkHistoryStateRedirects(ev) {
+	logCHSR('Checking history state redirect for event: ' + JSON.stringify(ev));
+
+	ev.type = 'history';
+	ev.method = 'GET';
+	let result = checkRedirects(ev);
+	logCHSR('Redirect check result: ' + JSON.stringify(result));
+
+	if (result.redirectUrl) {
+		logCHSR('Redirecting tab ' + ev.tabId + ' to URL: ' + result.redirectUrl);
+		chrome.tabs.update(ev.tabId, {
+			url: result.redirectUrl
+		});
+	} else {
+		logCHSR('No redirect URL found for event: ' + JSON.stringify(ev));
+	}
+}
 
 // Sets on/off badge, and for Chrome updates dark/light mode icon
 function updateIcon() {
