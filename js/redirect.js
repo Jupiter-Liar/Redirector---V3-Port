@@ -3,12 +3,13 @@ function Redirect(o) {
 }
 
 function logRedJS(msg) {
-	if (logRedJS.enabled) {
+	if (logRedJS.enabled || sharedLog.enabled) {
 		console.log('REDIRECTOR RedJS [' + new Date().toISOString() + ']: ' + msg);
 	}
 }
 
-logRedJS.enabled = true;
+// Expose logRedJS to the global scope so it can be accessed from other scripts
+self.logRedJS = logRedJS;
 
 //temp, allow addon sdk to require this.
 if (typeof exports !== 'undefined') {

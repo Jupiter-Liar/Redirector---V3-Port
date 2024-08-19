@@ -13,6 +13,9 @@ function log(msg, force, origin) {
 	}
 }
 
+// Expose log function and its state globally
+self.sharedLog = log;
+
 function logPreRL(msg, force) {
 	if (logPreRL.enabled || log.enabled || force) {
 		log(msg, true, "PreRL");
@@ -49,8 +52,8 @@ function logCF(msg, force) {
 	}
 }
 
-function logPR(msg, force) {
-	if (logPR.enabled || log.enabled || force) {
+function logPSR(msg, force) {
+	if (logPSR.enabled || log.enabled || force) {
 		log(msg, true, "CPR");
 	}
 }
@@ -112,7 +115,7 @@ logSRM.enabled = true; // Logging for sendRequestMessages
 logCR.enabled = true; // Logging for checkRedirects
 logMC.enabled = true; // Logging for monitorChanges
 logCF.enabled = true; // Logging for createFilters
-logPR.enabled = true; // Logging for processRedirects (formerly createPartitionedRedirects)
+logPSR.enabled = true; // Logging for processStoredRedirects (formerly createPartitionedRedirects)
 logSUDR.enabled = true; // Logging for setUpDeclarativeRedirects (formerly setUpRedirectListener)
 logCHSR.enabled = false; // Logging for checkHistoryStateRedirects
 logUpI.enabled = false; // Logging for updateIcon
@@ -121,6 +124,9 @@ logCSLG.enabled = false; // Logging for two chrome.storage.local.get operations
 logSI.enabled = false; // Logging for setupInitial
 logSN.enabled = false; // Logging for sendNotifications
 logHS.enabled = true; // Logging for handleStartup
+logRedJS.enabled = true; // Logging for redirect.js
+
+
 var enableNotifications = false;
 
 function isDarkMode() {
@@ -376,8 +382,8 @@ chrome.storage.onChanged.addListener(monitorChanges);
 
 // Processes redirects retrieved by setUpDeclarativeRedirects
 // Formerly known as createPartitionedRedirects
-function processRedirects(redirects) {
-	logPR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
+function processStoredRedirects(redirects) {
+	logPSR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
 
 	// One array is for rules without exceptions, and the other is for rules with.
 	var processed = [];
@@ -388,15 +394,15 @@ function processRedirects(redirects) {
 		var redirect = new Redirect(redirects[i]);
 
 		if (redirect.disabled) {
-			logPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
+			logPSR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
 			continue; // Skip this redirect if it is disabled
 		}
 
-		//		logPR('Redirect: ' + redirect);
+		//		logPSR('Redirect: ' + redirect);
 
-		logPR('Processing redirect: ' + JSON.stringify(redirect));
+		logPSR('Processing redirect: ' + JSON.stringify(redirect));
 		redirect = redirect.compileB();
-		logPR('Compiled redirect: ' + JSON.stringify(redirect));
+		logPSR('Compiled redirect: ' + JSON.stringify(redirect));
 
 		// Check if compiledRedirect is an array
 		if (Array.isArray(redirect)) {
@@ -412,30 +418,30 @@ function processRedirects(redirects) {
 		var redirect = new Redirect(redirects[i]);
 
 		if (redirect.disabled) {
-			logPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
+			logPSR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
 			continue; // Skip this redirect if it is disabled
 		}
 
 		if (!redirect.appliesTo.includes('history')) {
-			logPR('Redirect does not apply to history, skipping: ' + JSON.stringify(redirect));
+			logPSR('Redirect does not apply to history, skipping: ' + JSON.stringify(redirect));
 			continue; // Skip this redirect if "history" is not included
 		}
 
-		//		logPR('Redirect: ' + redirect);
+		//		logPSR('Redirect: ' + redirect);
 
-		logPR('Applied history redirect: ' + JSON.stringify(redirect));
+		logPSR('Applied history redirect: ' + JSON.stringify(redirect));
 
 		processedH.push(redirect);
 	}
 
-	logPR('Processed redirects: ' + JSON.stringify(processed));
-	logPR('Processed redirects with exceptions: ' + JSON.stringify(processedExceptions));
-	logPR('Processed history redirects: ' + JSON.stringify(processedH));
+	logPSR('Processed redirects: ' + JSON.stringify(processed));
+	logPSR('Processed redirects with exceptions: ' + JSON.stringify(processedExceptions));
+	logPSR('Processed history redirects: ' + JSON.stringify(processedH));
 
 	// Rules with exceptions come first, so they will have lower priorities and will not interfere with rules that have no exceptions. The whole array is in order from lowest priority to highest.
 	processed = processedExceptions.concat(processed);
 
-	logPR('Processed redirects combined: ' + JSON.stringify(processed, null, 2));
+	logPSR('Processed redirects combined: ' + JSON.stringify(processed, null, 2));
 	return {
 		processed,
 		processedH
@@ -470,7 +476,7 @@ function setUpDeclarativeRedirects() {
 		//		var {
 		//			processed: tempProcessed,
 		//			processedH: tempProcessedH
-		//		} = processRedirects(redirects);
+		//		} = processStoredRedirects(redirects);
 		//
 		//		// Assign to already declared variables
 		//		processedRedirects = tempProcessed;
@@ -480,7 +486,7 @@ function setUpDeclarativeRedirects() {
 		({
 			processed: processedRedirects,
 			processedH: processedHistoryRedirects
-		} = processRedirects(redirects));
+		} = processStoredRedirects(redirects));
 
 		logSUDR('Processed redirects: ' + JSON.stringify(processedRedirects));
 		logSUDR('Processed history redirects: ' + JSON.stringify(processedHistoryRedirects));
