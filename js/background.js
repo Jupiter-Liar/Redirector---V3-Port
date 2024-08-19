@@ -49,14 +49,14 @@ function logCF(msg, force) {
 	}
 }
 
-function logCPR(msg, force) {
-	if (logCPR.enabled || log.enabled || force) {
+function logPR(msg, force) {
+	if (logPR.enabled || log.enabled || force) {
 		log(msg, true, "CPR");
 	}
 }
 
-function logSURL(msg, force) {
-	if (logSURL.enabled || log.enabled || force) {
+function logSUDR(msg, force) {
+	if (logSUDR.enabled || log.enabled || force) {
 		log(msg, true, "SURL");
 	}
 }
@@ -112,15 +112,15 @@ logSRM.enabled = true; // Logging for sendRequestMessages
 logCR.enabled = true; // Logging for checkRedirects
 logMC.enabled = true; // Logging for monitorChanges
 logCF.enabled = true; // Logging for createFilters
-logCPR.enabled = true; // Logging for createPartitionedRedirects
-logSURL.enabled = true; // Logging for setUpRedirectListener
+logPR.enabled = true; // Logging for processRedirects (formerly createPartitionedRedirects)
+logSUDR.enabled = true; // Logging for setUpDeclarativeRedirects (formerly setUpRedirectListener)
 logCHSR.enabled = false; // Logging for checkHistoryStateRedirects
 logUpI.enabled = false; // Logging for updateIcon
 logCROA.enabled = false; // Logging for chrome.runtime.onMessage.addListener
 logCSLG.enabled = false; // Logging for two chrome.storage.local.get operations
 logSI.enabled = false; // Logging for setupInitial
 logSN.enabled = false; // Logging for sendNotifications
-logHS.enabled = false; // Logging for handleStartup
+logHS.enabled = true; // Logging for handleStartup
 var enableNotifications = false;
 
 function isDarkMode() {
@@ -137,7 +137,7 @@ logPreRL('Initialized storage area');
 
 // Redirects partitioned by request type, so we have to run through
 // the minimum number of redirects for each request.
-var partitionedRedirects = {};
+var processedRedirects = {};
 
 // Cache of URLs that have just been redirected to. They will not be redirected again, to
 // stop recursive redirects, and endless redirect chains.
@@ -159,7 +159,7 @@ function setIcon(image) {
 	};
 
 	for (let nr of [16, 19, 32, 38, 48, 64, 128]) {
-		data.path[nr] = `images/${image}-${nr}.png`;
+		data.path[nr] = `../images/${image}-${nr}.png`;
 		logPreRL('Icon path set for size ' + nr + ': ' + data.path[nr]);
 	}
 
@@ -277,14 +277,14 @@ function monitorChanges(changes, namespace) {
 			//			chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 		} else {
 			logMC('Enabling Redirector, setting up listeners');
-			setUpRedirectListener();
+			setUpDeclarativeRedirects();
 		}
 	}
 
 	if (changes.redirects) {
 		logMC('Redirects have changed. New redirects: ' + JSON.stringify(changes.redirects.newValue));
 		logMC('Setting up redirect listener again');
-		setUpRedirectListener();
+		setUpDeclarativeRedirects();
 	}
 
 	if (changes.logging) {
@@ -374,88 +374,199 @@ chrome.storage.onChanged.addListener(monitorChanges);
 //	return partitioned;
 //}
 
-// Creates partitioned redirects from the given redirects array.
-function createPartitionedRedirects(redirects) {
-	logCPR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
+// Processes redirects retrieved by setUpDeclarativeRedirects
+// Formerly known as createPartitionedRedirects
+function processRedirects(redirects) {
+	logPR('Creating partitioned redirects from: ' + JSON.stringify(redirects));
 
 	// One array is for rules without exceptions, and the other is for rules with.
-	var partitioned = [];
-	var partitionedExceptions = [];
+	var processed = [];
+	var processedExceptions = [];
 
 	for (var i = 0; i < redirects.length; i++) {
 		var redirect = new Redirect(redirects[i]);
 
 		if (redirect.disabled) {
-			logCPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
+			logPR('Redirect is disabled, skipping: ' + JSON.stringify(redirect));
 			continue; // Skip this redirect if it is disabled
 		}
 
-		//		logCPR('Redirect: ' + redirect);
+		//		logPR('Redirect: ' + redirect);
 
-		logCPR('Processing redirect: ' + JSON.stringify(redirect));
+		logPR('Processing redirect: ' + JSON.stringify(redirect));
 		redirect = redirect.compileB();
-		logCPR('Compiled redirect: ' + JSON.stringify(redirect));
+		logPR('Compiled redirect: ' + JSON.stringify(redirect));
 
 		// Check if compiledRedirect is an array
 		if (Array.isArray(redirect)) {
 			// Use spread operator to add all elements of redirect to partitioned
-			partitionedExceptions.unshift(...redirect);
+			processedExceptions.unshift(...redirect);
 		} else {
 			// Add single compiledRedirect to partitioned
-			partitioned.unshift(redirect);
+			processed.unshift(redirect);
 		}
 	}
 
-	logCPR('Partitioned redirects: ' + JSON.stringify(partitioned));
-	logCPR('Partitioned redirects with exceptions: ' + JSON.stringify(partitionedExceptions));
+	logPR('Processed redirects: ' + JSON.stringify(processed));
+	logPR('Processed redirects with exceptions: ' + JSON.stringify(processedExceptions));
 
 	// Rules with exceptions come first, so they will have lower priorities and will not interfere with rules that have no exceptions. The whole array is in order from lowest priority to highest.
-	partitioned = partitionedExceptions.concat(partitioned);
+	processed = processedExceptions.concat(processed);
 
-	logCPR('Partitioned redirects combined: ' + JSON.stringify(partitioned, null, 2));
-	return partitioned;
+	logPR('Processed redirects combined: ' + JSON.stringify(processed, null, 2));
+	return processed;
 }
 
-// Sets up the listener, partitions the redirects, creates the appropriate filters etc.
-function setUpRedirectListener() {
-	//	logSURL('Setting up redirect listener');
+// Pulls the rules from storage and sets up declarative redirects.
+// Formerly known as setUpRedirectListener
+function setUpDeclarativeRedirects() {
+	//	logSUDR('Setting up redirect listener');
 
 	// Unsubscribe first, in case there are changes...
-	//	logSURL('Removing existing listeners');
+	//	logSUDR('Removing existing listeners');
 	// chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
 	// chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 
-	logSURL('Retrieving redirects from storage');
+	logSUDR('Retrieving redirects from storage');
 	storageArea.get({
 		redirects: []
 	}, function (obj) {
 		var redirects = obj.redirects;
-		logSURL('Retrieved redirects from storage: ' + JSON.stringify(redirects));
+		logSUDR('Retrieved redirects from storage: ' + JSON.stringify(redirects));
 
 		if (redirects.length === 0) {
-			logSURL('No redirects defined, not setting up listener');
+			logSUDR('No redirects defined, not setting up listener');
 			return;
 		}
 
-		logSURL('Partitioning redirects');
-		partitionedRedirects = createPartitionedRedirects(redirects);
-		logSURL('Partitioned redirects: ' + JSON.stringify(partitionedRedirects));
+		logSUDR('Processing redirects');
+		processedRedirects = processRedirects(redirects);
+		logSUDR('Processed redirects: ' + JSON.stringify(processedRedirects));
 
-		//		logSURL('Creating filter');
+		//		logSUDR('Creating filter');
 		//		var filter = createFilter(redirects);
-		//		logSURL('Created filter: ' + JSON.stringify(filter));
+		//		logSUDR('Created filter: ' + JSON.stringify(filter));
 
-		//		logSURL('Setting filter for listener');
+		//		logSUDR('Setting filter for listener');
 		// chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter, ["blocking"]); // Blocking is dead.
 		//		chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter);
-		//		logSURL('Added webRequest.onBeforeRequest listener with filter');
+		//		logSUDR('Added webRequest.onBeforeRequest listener with filter');
 
 		// Process each partitioned redirect
 		let allRules = [];
 
-		// Function to filter resource types
-		function filterResourceTypes(resourceTypes) {
-			const allowedResourceTypes = [
+		processedRedirects.forEach((redirect, index) => {
+			// Ensure resourceTypes only contains allowed values
+			if (redirect.condition && redirect.condition.resourceTypes) {
+				redirect.condition.resourceTypes = filterResourceTypes(redirect.condition.resourceTypes);
+			}
+
+			// Validate the rule
+			if (!validateRule(redirect)) {
+				logSUDR('Invalid rule discarded: ' + JSON.stringify(redirect));
+				return; // Skip invalid rules
+			}
+
+			// Check if regexSubstitution is empty and replace it with "about:blank"
+			// This fixes an error where broken rules prevent changes.
+			if (redirect.action && redirect.action.type === "redirect") {
+				if (!redirect.action.redirect.regexSubstitution) {
+					redirect.action.redirect.regexSubstitution = "about:blank";
+				}
+			}
+
+			// Assign a unique ID for each rule
+			redirect.id = allRules.length + 1;
+			redirect.priority = redirect.id;
+
+			allRules.push(redirect);
+		});
+
+		logSUDR('Formatted rules for declarativeNetRequest: ' + JSON.stringify(allRules));
+
+		//		// Update the declarativeNetRequest rules
+		//		chrome.declarativeNetRequest.updateDynamicRules({
+		//			removeRuleIds: allRules.map(rule => rule.id),
+		//			addRules: allRules
+		//		}, () => {
+		//			if (chrome.runtime.lastError) {
+		//				logSUDR('Error setting up redirect listener: ' + chrome.runtime.lastError.message);
+		//			} else {
+		//				logSUDR('Redirect listener setup completed with all rules applied.');
+		//			}
+		//		});
+
+		// Function to apply rules and handle errors
+		function applyRules(rules) {
+			// First, remove all existing rules
+			chrome.declarativeNetRequest.updateDynamicRules({
+				removeRuleIds: rules.map(rule => rule.id) // Assuming you want to remove the same rules you're going to add
+			}, () => {
+				if (chrome.runtime.lastError) {
+					logSUDR('Error removing existing rules: ' + chrome.runtime.lastError.message);
+					return; // Exit the function if there's an error in removal
+				}
+
+				let appliedRules = [];
+
+				// Then, attempt to apply each rule individually
+				rules.forEach((rule, index) => {
+					try {
+						chrome.declarativeNetRequest.updateDynamicRules({
+							addRules: [rule]
+						}, () => {
+							if (chrome.runtime.lastError) {
+								logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
+							} else {
+								logSUDR(`Rule with id ${rule.id} applied successfully.`);
+								appliedRules.push(rule.id); // Keep track of successfully applied rules
+							}
+						});
+					} catch (error) {
+						logSUDR(`Error applying rule with id ${rule.id}: ${error.message}`);
+					}
+				});
+
+				logSUDR(`Applied rules: ${JSON.stringify(appliedRules)}`);
+			});
+		}
+
+		// Function to get the problematic rule ID from the error message
+		function getProblematicRuleId(errorMessage) {
+			// Extract the rule ID from the error message if possible (assuming the error message includes this info)
+			const match = errorMessage.match(/rule with ID (\d+)/);
+			return match ? parseInt(match[1], 10) : null;
+		}
+
+		// Start the rule application process
+		applyRules(allRules);
+
+		if (processedRedirects.history) {
+			logSUDR('Adding HistoryState Listener');
+
+			let historyFilter = {
+				url: []
+			};
+			for (let r of processedRedirects.history) {
+				let pattern = r._preparePattern(r.includePattern);
+				historyFilter.url.push({
+					urlMatches: pattern
+				});
+				logSUDR('Prepared history state pattern for filter: ' + pattern);
+			}
+			logSUDR('History state filter: ' + JSON.stringify(historyFilter));
+
+			// chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
+			logSUDR('Added webNavigation.onHistoryStateUpdated listener with filter');
+		} else {
+			logSUDR('No history state redirects defined');
+		}
+	});
+}
+
+// Function to filter resource types
+function filterResourceTypes(resourceTypes) {
+	const allowedResourceTypes = [
                 'csp_report',
                 'font',
                 'image',
@@ -472,65 +583,114 @@ function setUpRedirectListener() {
                 'webtransport',
                 'xmlhttprequest'
             ];
-			return resourceTypes.filter(type => allowedResourceTypes.includes(type));
+	return resourceTypes.filter(type => allowedResourceTypes.includes(type));
+}
+
+// This creates a trigger, where if a rule is found to be invalid and the very next rule is of the type "allow" — which means it was the exception to the invalid rule — this "allow" rule is also invalidated.
+let allowKick = false;
+// This switch resets allowKick at the appropriate moment. Shouldn't be necessary, but in case the script changes, it could become useful.
+let allowKickReset = false;
+
+function validateRule(rule) {
+	let valid = true;
+
+	// Check if `rule` is an object
+	if (typeof rule !== 'object' || rule === null) {
+		logSUDR('Invalid rule structure: Rule is not an object.');
+		valid = false;
+	}
+
+	// Check `condition` field
+	if (typeof rule.condition !== 'object' || rule.condition === null) {
+		logSUDR('Invalid rule: `condition` is not an object.');
+		valid = false;
+	} else {
+		// Check `regexFilter` and `urlFilter`
+		if (typeof rule.condition.regexFilter !== 'string' && typeof rule.condition.urlFilter !== 'string') {
+			logSUDR('Invalid rule: `condition.regexFilter` and `condition.urlFilter` are not strings.');
+			valid = false;
+		} else if (typeof rule.condition.regexFilter === 'string' && rule.condition.regexFilter.trim() === '') {
+			logSUDR('Invalid rule: `condition.regexFilter` is an empty string.');
+			valid = false;
+		} else if (typeof rule.condition.urlFilter === 'string' && rule.condition.urlFilter.trim() === '') {
+			logSUDR('Invalid rule: `condition.urlFilter` is an empty string.');
+			valid = false;
 		}
 
-		partitionedRedirects.forEach((redirect, index) => {
-			// Assign a unique ID for each rule
-			redirect.id = allRules.length + 1;
-			redirect.priority = redirect.id;
+		// Check `resourceTypes` field
+		if (rule.condition.resourceTypes) {
+			if (!Array.isArray(rule.condition.resourceTypes)) {
+				logSUDR('Invalid rule: `condition.resourceTypes` is not an array.');
+				valid = false;
+			} else {
+				// Use the external function to validate resource types
+				const validResourceTypes = filterResourceTypes(rule.condition.resourceTypes);
 
-			// Ensure resourceTypes only contains allowed values
-			if (redirect.condition && redirect.condition.resourceTypes) {
-				redirect.condition.resourceTypes = filterResourceTypes(redirect.condition.resourceTypes);
-			}
-
-			// Check if regexSubstitution is empty and replace it with "about:blank"
-			// This fixes an error where broken rules prevent changes.
-			if (redirect.action && redirect.action.type === "redirect") {
-				if (!redirect.action.redirect.regexSubstitution) {
-					redirect.action.redirect.regexSubstitution = "about:blank";
+				if (validResourceTypes.length === 0) {
+					logSUDR('Invalid rule: No valid resource types specified in `condition.resourceTypes`.');
+					valid = false;
+				} else if (validResourceTypes.length !== rule.condition.resourceTypes.length) {
+					logSUDR('Invalid rule: `condition.resourceTypes` contains some invalid values.');
+					valid = false;
 				}
 			}
-
-			allRules.push(redirect);
-		});
-
-		logSURL('Formatted rules for declarativeNetRequest: ' + JSON.stringify(allRules));
-
-		// Update the declarativeNetRequest rules
-		chrome.declarativeNetRequest.updateDynamicRules({
-			removeRuleIds: allRules.map(rule => rule.id),
-			addRules: allRules
-		}, () => {
-			if (chrome.runtime.lastError) {
-				logSURL('Error setting up redirect listener: ' + chrome.runtime.lastError.message);
-			} else {
-				logSURL('Redirect listener setup completed with all rules applied.');
-			}
-		});
-
-		if (partitionedRedirects.history) {
-			logSURL('Adding HistoryState Listener');
-
-			let historyFilter = {
-				url: []
-			};
-			for (let r of partitionedRedirects.history) {
-				let pattern = r._preparePattern(r.includePattern);
-				historyFilter.url.push({
-					urlMatches: pattern
-				});
-				logSURL('Prepared history state pattern for filter: ' + pattern);
-			}
-			logSURL('History state filter: ' + JSON.stringify(historyFilter));
-
-			// chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
-			logSURL('Added webNavigation.onHistoryStateUpdated listener with filter');
 		} else {
-			logSURL('No history state redirects defined');
+			logSUDR('Invalid rule: `condition.resourceTypes` is missing.');
+			valid = false;
 		}
-	});
+	}
+
+	// Check `action` field
+	if (typeof rule.action !== 'object' || rule.action === null) {
+		logSUDR('Invalid rule: `action` is not an object.');
+		valid = false;
+	} else {
+		// Check `type` field in `action`
+		if (typeof rule.action.type !== 'string') {
+			logSUDR('Invalid rule: `action.type` is not a string.');
+			valid = false;
+		}
+
+		// Check if `action` is of type `redirect` and validate `redirect` field
+		if (rule.action.type === 'redirect') {
+			if (typeof rule.action.redirect !== 'object' || rule.action.redirect === null) {
+				logSUDR('Invalid rule: `action.redirect` is not an object.');
+				valid = false;
+			} else {
+				if (typeof rule.action.redirect.regexSubstitution !== 'string' && typeof rule.action.redirect.url !== 'string') {
+					logSUDR('Invalid rule: `action.redirect.regexSubstitution` and `action.redirect.url` are not strings.');
+					valid = false;
+				} else if (typeof rule.action.redirect.regexSubstitution === 'string' && rule.action.redirect.regexSubstitution.trim() === '') {
+					logSUDR('Invalid rule: `action.redirect.regexSubstitution` is an empty string.');
+					valid = false;
+				} else if (typeof rule.action.redirect.url === 'string' && rule.action.redirect.url.trim() === '') {
+					logSUDR('Invalid rule: `action.redirect.url` is not a string.');
+					valid = false;
+				}
+			}
+		} else if (rule.action.type === 'allow') {
+			if (allowKick) {
+				logSUDR('Invalid rule: This rule was the exception to an invalidated rule.');
+				valid = false;
+				allowKickReset = true;
+			}
+		}
+	}
+
+	if (valid) {
+		logSUDR('Valid rule: ' + JSON.stringify(rule));
+		allowKick = false;
+	} else {
+		allowKick = true;
+		if (allowKickReset) {
+			allowKickReset = false;
+			allowKick = false;
+		}
+	}
+
+	logSUDR('allowKick: ' + allowKick);
+
+	return valid;
 }
 
 // Redirect URLs on places like Facebook and Twitter who don't do real reloads, only do ajax updates and push a new URL to the address bar...
@@ -696,7 +856,7 @@ chrome.runtime.onMessage.addListener(
 										logCROA('Redirects moved from Local to Sync Storage Area.');
 										chrome.storage.local.remove("redirects", function () {
 											logCROA('Redirects removed from Local storage.');
-											setUpRedirectListener();
+											setUpDeclarativeRedirects();
 											sendResponse({
 												message: "sync-enabled"
 											});
@@ -729,7 +889,7 @@ chrome.runtime.onMessage.addListener(
 								logCROA('Redirects moved from Sync to Local Storage Area.');
 								chrome.storage.sync.remove("redirects", function () {
 									logCROA('Redirects removed from Sync storage.');
-									setUpRedirectListener();
+									setUpDeclarativeRedirects();
 									sendResponse({
 										message: "sync-disabled"
 									});
@@ -801,7 +961,7 @@ function setupInitial() {
 		logSI('Retrieved disabled status from storage: ' + obj.disabled);
 		if (!obj.disabled) {
 			logSI('Redirector is enabled. Setting up redirect listener.');
-			setUpRedirectListener();
+			setUpDeclarativeRedirects();
 		} else {
 			logSI('Redirector is disabled.');
 		}
@@ -878,7 +1038,7 @@ function sendNotifications(redirect, originalUrl, redirectedUrl) {
 
 chrome.runtime.onStartup.addListener(handleStartup);
 
-function handleStartup() {
+async function handleStartup() {
 	logHS('Handling startup...');
 
 	// Disable notifications and update storage
@@ -893,15 +1053,55 @@ function handleStartup() {
 		}
 	});
 
-	// Update icon based on current dark/light mode settings
-	updateIcon();
-	logHS('Icon update initiated during startup');
+	//	// Update icon based on current dark/light mode settings
+	//	updateIcon();
+	//	logHS('Icon update initiated during startup');
+	//
+	//	// Set up dark mode media query listener
+	//	let darkModeMql = window.matchMedia('(prefers-color-scheme: dark)');
+	//	darkModeMql.onchange = function () {
+	//		logHS('Dark mode preference changed. Updating icon...');
+	//		updateIcon();
+	//	};
+	//	logHS('Dark mode media query listener set up');
 
-	// Set up dark mode media query listener
-	let darkModeMql = window.matchMedia('(prefers-color-scheme: dark)');
-	darkModeMql.onchange = function () {
-		logHS('Dark mode preference changed. Updating icon...');
-		updateIcon();
-	};
-	logHS('Dark mode media query listener set up');
+	// Create or ensure the offscreen document exists for dark mode detection
+	async function createOffscreenDocument() {
+		const page = '../offscreen.html'; // Your offscreen document
+		const reason = 'MATCH_MEDIA'; // Correct reason for media query detection
+		const exists = await chrome.offscreen.hasDocument();
+
+		if (!exists) {
+			await chrome.offscreen.createDocument({
+				url: page,
+				reasons: [reason],
+				justification: 'Needed to detect dark mode in the browser'
+			});
+			logHS('Offscreen document created for dark mode detection');
+		} else {
+			logHS('Offscreen document already exists');
+		}
+	}
+
+	await createOffscreenDocument();
+
+	// Listen for messages from the offscreen document
+	chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+		if (message.isDarkMode !== undefined) {
+			logHS(`Dark mode status received: ${message.isDarkMode}`);
+			chrome.storage.local.set({
+				darkMode: message.isDarkMode
+			}, function () {
+				if (chrome.runtime.lastError) {
+					logHS('Error setting darkMode in storage: ' + chrome.runtime.lastError.message);
+				} else {
+					logHS('Dark mode preference stored');
+					updateIcon(); // Trigger the icon update based on new dark mode preference
+				}
+			});
+		}
+	});
+
+	logHS('Icon update initiated during startup');
+	logHS('Dark mode media query listener set up through offscreen document');
 }
