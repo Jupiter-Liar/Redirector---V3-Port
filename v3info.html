@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>REDIRECTOR MV3 INFO</title>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" href="css/help.css" />
+	<link rel="shortcut icon" href="images/icon-light-theme-32.png">
+</head>
+
+<body>
+
+	<h1 class="v3">REDIRECTOR INFO</h1>
+	<h2>for the Manifest V3 update</h2>
+
+	<ul>
+		<li><a href="#why-change">Why do things need to change?</a></li>
+		<li><a href="#why-borders">Why are there reddish borders around certain rules?</a></li>
+		<li><a href="#will-redirects-work">Will my redirects still work?</a></li>
+		<li><a href="#exceptions-different">How exceptions will be different</a></li>
+		<li><a href="#managing-exceptions">Guidelines for managing exceptions</a></li>
+		<li><a href="#RE2">Regular expressions (regex): RE2</a></li>
+	</ul>
+
+	<a name="why-change"></a>
+	<h4>Why do things need to change?</h4>
+
+	<p>The original version of Redirector was primarily built on an API called <b>webRequest</b>. Importantly, it relied on the <b>webRequest blocking</b> feature. Google, in developing its new Manifest V3 standard, got rid of webRequest blocking. Now, Redirector has to use something else.</p>
+
+	<p>That something else is the <b>declarativeNetRequest</b> API. It has some real benefits. It's a lot more efficient than the old webRequest methods of redirection, and it requires less code, too. But it also brings some new challenges.</p>
+
+	<a name="why-borders"></a>
+	<h4>Why are there reddish borders around certain rules?</h4>
+
+	<p>Rules which have exceptions, and are enabled, will now have a reddish border, to make them easier to identify. The reason will <a href="#why-borders-2">become clear</a>.</p>
+
+	<a name="will-redirects-work"></a>
+	<h4>Will my redirects still work?</h4>
+
+	<p>That depends on your redirects. A few things are going to be different now. First, let's get some of the simpler things out of the way:</p>
+
+	<ul class="fields">
+		<li><strong>Work in progress:</strong> As you have in your hands an <b>alpha</b> build, some things that <i>should</i> work might not. The new development team would appreciate any feedback about things that don't work.</li>
+
+		<li><strong>Resource types (aka "Applies to"):</strong> Page redirects still work. That's no worry. Image replacements also work. There are other types that remain to be tested, but they probably work. History state redirects will probably work. However, some redirect types will fail. For responsive images in Firefox, a new solution will need to be found. A few other miscellaneous types might also not work. However, the declarativeNetRequest API also opens up the options for some additional resource types. They may be implemented in the future.</li>
+	</ul>
+
+	<a name="exceptions-different"></a>
+	<h4>How exceptions will be different</h4>
+
+	<p>This will be the biggest stumbling block. Exceptions to rules, which are specified in the <b>advanced options</b> for rules — specifically the <b>"Exclude pattern"</b> option — will be handled differently from now on. This is unavoidable.</p>
+
+	<p>To understand why, there are two important things to know:</p>
+
+	<ol>
+		<li><strong>Rules cannot have built-in exceptions.</strong> This is how the declarativeNetRequest framework works. There is no option to give rules exceptions.
+			<br><br>
+			Does this mean there can't be exceptions anymore? No. But it means they need to be handled differently. Which brings us to the next point:
+			<br><br>
+		</li>
+		<li><strong>Rules have priorities.</strong> Rules that have higher priorities override rules that have lower priorities.</li>
+	</ol>
+
+	<p>So you may have guessed how exceptions are handled within this framework. First, the basic rule is declared, and its action is "redirect". Then the exception is declared as its own rule, and its action is "allow". That is how we are able to give rules exceptions.</p>
+
+	<p>You may have also guessed the problem. An exception doesn't just apply to its parent rule, because in this framework, there is no such thing as a parent rule. The exception applies to ALL rules with a lower priority. This means that <b>an exception to one rule could interfere with several other rules</b>.</p>
+
+	<p>Einar established one way to manage conflicts: if multiple redirect rules apply to the same URL, the rule that is higher on the settings page is the rule that will be followed. Rules that are higher on the page have higher priorities. And this still applies in this Manifest V3 version.</p>
+
+	<p>But it isn't the only organizational rule that manages conflicts. Because if it were, there would still be too much potential for exceptions to cause problems. And so, to minimize these conflicts, a judgment call has been made.</p>
+
+	<p><strong>This is the compromise:<br>
+			All rules which do not have exceptions have higher priorities.</strong></p>
+
+	<p>This is handled by Redirector's internal logic. The rules will stay in the same order on the settings page. But under the hood, Redirector will put things into a different order.</p>
+
+	<p>If a rule has no exceptions, it may be overruled by a different rule that also doesn't have exceptions. This different rule, of course, would come higher on the settings page, in keeping with Einar's system. <b>But no matter what order the rules come in, a rule that has exceptions cannot overrule a rule that has no exceptions.</b> This is intended to reduce the number of possible conflicts.</p>
+
+	<p>To make this easier to understand, let's present a list of rules. The URLs are not important for this example; all that matters here is the order and whether or not they have exceptions.</p>
+
+	<ol>
+		<li>Rule 1, with exception</li>
+		<li>Rule 2</li>
+		<li>Rule 3, with exception</li>
+		<li>Rule 4</li>
+	</ol>
+
+	<p>How will these rules be handled, in the event of conflicts? If the rules were a list, where the higher a rule was on the list, the more important it would be, the list would look like this:</p>
+
+	<ol>
+		<li>Rule 2</li>
+		<li>Rule 4</li>
+		<li>Rule 1's exception</li>
+		<li>Rule 1 without its exception</li>
+		<li>Rule 3's exception</li>
+		<li>Rule 3 without its exception</li>
+	</ol>
+
+	<p>Under the hood, this is how Redirector's internal logic will organize the rules. First, we have the rules that don't have exceptions. Nothing lower on the list can overrule them. Then we have the rules that do have exceptions, with each rule's exception coming before that rule. Rule 1's exception can overrule Rule 1. It can also overrule Rule 3 and its exception. The basic form of Rule 1, without its exception, can also overrule Rule 3 and its exception. And Rule 3's exception can only overrule Rule 3.</p>
+
+	<p>This minimizes the problem of conflicts, by limiting how many rules exceptions can interfere with. But design choices cannot eliminate the problem completely. Somewhere down the line, the exception from one rule may still interfere with a different rule.</p>
+
+	<p>The final task of managing conflicts between rules falls to the user.</p>
+
+
+	<a name="managing-exceptions"></a>
+	<h4>Guidelines for managing exceptions</h4>
+
+	<p>Avoiding unwanted conflicts between rules is possible, as long as the rules are set up correctly. This has always been the case with this extension; it's just a little different now. So here are some guidelines:</p>
+
+	<ul>
+		<li><strong>Define exceptions NARROWLY.</strong> This is the most important guideline. If you define an exception broadly, there could be all kinds of conflicts. So define the exception as narrowly as possible, so it will only affect the rule you want it to affect.</li>
+		<li><strong>Use the order of rules on the settings page to raise or lower their priorities.</strong> This logic was established with Einar's versions of Redirector, and it still applies, so long as both rules have exceptions or both rules do not. If one rule overrules another, and you want it to be the opposite way around, changing the order of the rules can solve your problem.</li>
+	</ul>
+
+	<a name="why-borders-2"></a>
+	<p>Because rules with exceptions may cause problems, when they are enabled, they now feature a <b>reddish border</b>. This makes them easier to spot when troubleshooting conflicts.</p>
+
+	<p>To recap:</p>
+
+	<ul>
+		<li><strong>Rules that do not have exceptions can overrule:</strong>
+			<ul>
+				<li>other rules, lower on the settings page, that do not have exceptions.</li>
+				<li>ALL rules that have exceptions.</li>
+				<li>ALL of those exceptions.</li>
+			</ul>
+		</li>
+		<li><strong>They cannot overrule:</strong>
+			<ul>
+				<li>other rules, higher on the settings page, that do not have exceptions.</li>
+			</ul>
+		</li>
+		<li><strong>Rules that have exceptions can overrule:</strong>
+			<ul>
+				<li>other rules, lower on the settings page, that have exceptions.</li>
+				<li>the exceptions to those lower rules.</li>
+			</ul>
+		</li>
+		<li><strong>They cannot overrule:</strong>
+			<ul>
+				<li>ANY rules that do not have exceptions.</li>
+				<li>other rules, higher on the settings page, that have exceptions.</li>
+				<li>the exceptions to those higher rules.</li>
+				<li>their own exceptions — but that goes without saying.</li>
+			</ul>
+		</li>
+		<li><strong>Exceptions can overrule:</strong>
+			<ul>
+				<li>rules, lower on the settings page, that have exceptions.</li>
+				<li>the exceptions to those lower rules.</li>
+				<li>the rules to which they belong — but that goes without saying.</li>
+			</ul>
+		</li>
+		<li><strong>They cannot overrule:</strong>
+			<ul>
+				<li>ANY rules that do not have exceptions.</li>
+				<li>other rules, higher on the settings page, that have exceptions.</li>
+				<li>the exceptions to those higher rules.</li>
+			</ul>
+		</li>
+	</ul>
+
+	<a name="RE2"></a>
+	<h4>Regular expressions (regex): RE2</h4>
+
+	<p>Rules written in regular expression format — which is not the default format, so if you've only ever used the default format, you'll be fine — may not work anymore. Advanced regex users will be disappointed to learn that the new framework confines us to the much more limited <b>RE2</b> format. Say goodbye to all that beautiful lookahead.</p>
+
+	<p>This is the reason that the handling of exceptions had to change. With a more versatile form of regex, there could have been rules that built their exceptions into regex in the form of lookahead. But with RE2, that can't be done.</p>
+
+	<p>Any rules that use a more elaborate form of regex will have to be rewritten in an RE2 format. Some complex rules may not be able to be rewritten in RE2. And this is unfortunate. It's also unavoidable. However, using additional rules and careful use of ordering and/or exceptions, it should be possible to build any kind of redirect scheme desired.</p>
+</body>
+
+</html>
