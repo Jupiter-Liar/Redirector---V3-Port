@@ -578,6 +578,7 @@ a[ng-click] {
 footer {
 	margin-top: 30px;
 	text-align: center;
+	line-height: 1.25em;
 }
 
 footer small {
