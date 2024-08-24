@@ -4,11 +4,25 @@
 importScripts('redirect.js');
 const RULE_ID_STORAGE_KEY = 'ruleIds';
 
+// Retrieve logging setting from storage
+chrome.storage.local.get({
+	logging: false
+}, function (obj) {
+	log.enabled = obj.logging;
+	logCSLG('Retrieved logging setting from storage: ' + obj.logging);
+});
+
+let logMasterEnable;
+let logMasterDisable;
+
 function log(msg, force, origin) {
+	if (logMasterDisable) {
+		return;
+	}
 	if (!origin) {
 		origin = 'NSO';
 	}
-	if (log.enabled || force) {
+	if (log.enabled || force || logMasterEnable) {
 		console.log('REDIRECTOR ' + origin + ' [' + new Date().toISOString() + ']: ' + msg);
 	}
 }
@@ -106,25 +120,27 @@ function logHS(msg, force) {
 	}
 }
 
-log.enabled = true; // Master switch to enable logging. If enabled, ALL logs will be printed.
+log.enabled = false; // Master switch to enable logging. If enabled, ALL logs will be printed.
+logMasterEnable = false; // An even more powerful master switch. Overrides the user-selected value for logging and enables ALL logs.
+logMasterDisable = false; // A still more powerful switch that disables ALL logging no matter what
 
 // What follows are switches for individual functions and sections, since the amount of logging has gone way up.
-logPreRL.enabled = true; // Logging for functions before redirection logic
-logQR.enabled = true; // Logging for queueRedirects
-logSRM.enabled = true; // Logging for sendRequestMessages
-logCR.enabled = true; // Logging for checkRedirects
-logMC.enabled = true; // Logging for monitorChanges
-logCF.enabled = true; // Logging for createFilters
-logPSR.enabled = true; // Logging for processStoredRedirects (formerly createPartitionedRedirects)
-logSUDR.enabled = true; // Logging for setUpDeclarativeRedirects (formerly setUpRedirectListener)
+logPreRL.enabled = false; // Logging for functions before redirection logic
+logQR.enabled = false; // Logging for queueRedirects
+logSRM.enabled = false; // Logging for sendRequestMessages
+logCR.enabled = false; // Logging for checkRedirects
+logMC.enabled = false; // Logging for monitorChanges
+logCF.enabled = false; // Logging for createFilters
+logPSR.enabled = false; // Logging for processStoredRedirects (formerly createPartitionedRedirects)
+logSUDR.enabled = false; // Logging for setUpDeclarativeRedirects (formerly setUpRedirectListener)
 logCHSR.enabled = false; // Logging for checkHistoryStateRedirects
 logUpI.enabled = false; // Logging for updateIcon
 logCROA.enabled = false; // Logging for chrome.runtime.onMessage.addListener
 logCSLG.enabled = false; // Logging for two chrome.storage.local.get operations
 logSI.enabled = false; // Logging for setupInitial
 logSN.enabled = false; // Logging for sendNotifications
-logHS.enabled = true; // Logging for handleStartup
-logRedJS.enabled = true; // Logging for redirect.js
+logHS.enabled = false; // Logging for handleStartup
+logRedJS.enabled = false; // Logging for redirect.js
 
 
 var enableNotifications = false;
@@ -280,6 +296,7 @@ function monitorChanges(changes, namespace) {
 		if (changes.disabled.newValue === true) {
 			logMC('Disabling Redirector, removing listeners');
 			//			chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
+			removeAllRules();
 			chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 		} else {
 			logMC('Enabling Redirector, setting up listeners');
@@ -294,12 +311,13 @@ function monitorChanges(changes, namespace) {
 	}
 
 	if (changes.logging) {
-		//		log.enabled = changes.log.newValue;
-		logMC('logging settings have changed to: ' + changes.logging.newValue, true); // Always want this to be logged
+		log.enabled = changes.logging.newValue;
+		logMC('logging settings have changed to: ' + changes.logging.newValue, true);
+		// Always want this to be logged
 	}
 
 	if (changes.enableNotifications) {
-		logMC('Notifications setting changed to: ' + changes.enableNotifications.newValue);
+		logMC('Notifications setting changed to: ' + changes.enableNotifications.newValue, true);
 		enableNotifications = changes.enableNotifications.newValue;
 	}
 }
@@ -448,6 +466,42 @@ function processStoredRedirects(redirects) {
 	};
 }
 
+// This function removes all active rules
+function removeAllRules() {
+	return new Promise((resolve, reject) => {
+		// Get all current rule IDs
+		chrome.declarativeNetRequest.getDynamicRules((rules) => {
+			if (chrome.runtime.lastError) {
+				logSUDR('Error fetching existing rules: ' + chrome.runtime.lastError.message);
+				reject(new Error(chrome.runtime.lastError.message));
+				return;
+			}
+
+			const ruleIds = rules.map(rule => rule.id);
+
+			if (ruleIds.length === 0) {
+				logSUDR('No existing rules to remove.');
+				resolve();
+				return;
+			}
+
+			// Remove all the fetched rules
+			chrome.declarativeNetRequest.updateDynamicRules({
+				removeRuleIds: ruleIds
+			}, () => {
+				if (chrome.runtime.lastError) {
+					logSUDR('Error removing existing rules: ' + chrome.runtime.lastError.message);
+					reject(new Error(chrome.runtime.lastError.message));
+				} else {
+					logSUDR('All existing rules removed successfully.');
+					resolve();
+				}
+			});
+		});
+	});
+}
+
+
 // Pulls the rules from storage and sets up declarative redirects.
 // Formerly known as setUpRedirectListener
 function setUpDeclarativeRedirects() {
@@ -544,42 +598,32 @@ function setUpDeclarativeRedirects() {
 		//			}
 		//		});
 
+
+
 		// Function to apply rules and handle errors
 		function applyRules(rules) {
-			// Create a list of promises for removing existing rules
-			let removeRulesPromise = new Promise((resolve, reject) => {
-				chrome.declarativeNetRequest.updateDynamicRules({
-					removeRuleIds: rules.map(rule => rule.id) // Remove all existing rules
-				}, () => {
-					if (chrome.runtime.lastError) {
-						logSUDR('Error removing existing rules: ' + chrome.runtime.lastError.message);
-						reject(new Error(chrome.runtime.lastError.message));
-					} else {
-						resolve();
-					}
-				});
-			});
+			// First, remove all existing rules
+			removeAllRules()
+				.then(() => {
+					// After rules are removed, create promises for applying each new rule
+					let applyRulePromises = rules.map(rule => new Promise((resolve, reject) => {
+						chrome.declarativeNetRequest.updateDynamicRules({
+							addRules: [rule]
+						}, () => {
+							if (chrome.runtime.lastError) {
+								logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
+								reject(new Error(chrome.runtime.lastError.message));
+							} else {
+								logSUDR(`Rule with id ${rule.id} applied successfully.`);
+								resolve(rule.id); // Resolve with the rule id
+							}
+						});
+					}));
 
-			// Create a list of promises for applying each rule
-			let applyRulePromises = rules.map(rule => new Promise((resolve, reject) => {
-				chrome.declarativeNetRequest.updateDynamicRules({
-					addRules: [rule]
-				}, () => {
-					if (chrome.runtime.lastError) {
-						logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
-						reject(new Error(chrome.runtime.lastError.message));
-					} else {
-						logSUDR(`Rule with id ${rule.id} applied successfully.`);
-						resolve(rule.id); // Resolve with the rule id
-					}
-				});
-			}));
-
-			// Wait for all promises to complete
-			Promise.all([removeRulesPromise, ...applyRulePromises])
-				.then((results) => {
-					// results contains the ids of successfully applied rules
-					let appliedRules = results.slice(1); // Exclude the removeRulesPromise result
+					// Wait for all apply rule promises to complete
+					return Promise.all(applyRulePromises);
+				})
+				.then((appliedRules) => {
 					logSUDR(`Applied rules: ${JSON.stringify(appliedRules)}`);
 				})
 				.catch((error) => {
@@ -603,6 +647,7 @@ function setUpDeclarativeRedirects() {
 
 		if (processedHistoryRedirects.some(redirect => redirect.appliesTo.includes('history'))) {
 			logSUDR('Adding HistoryState Listener');
+
 
 			let historyFilter = {
 				url: []
@@ -782,21 +827,33 @@ function updateIcon() {
 
 	logUpI('Retrieving disabled status from storage');
 	chrome.storage.local.get({
-		disabled: false
+		disabled: false,
+		themePreference: 'auto'
 	}, function (obj) {
 		logUpI('Retrieved storage object: ' + JSON.stringify(obj));
 
+		const theme = obj.themePreference;
+		logUpI(`Current theme preference: ${theme}`);
+
 		// Update icon based on dark/light mode
-		if (!isFirefox) {
-			if (isDarkMode()) {
-				logUpI('Dark mode is enabled. Setting dark theme icon.');
-				setIcon('icon-dark-theme');
+		if (theme === "auto") {
+			if (!isFirefox) {
+				if (isDarkMode()) {
+					logUpI('Dark mode is enabled. Setting dark theme icon.');
+					setIcon('icon-dark-theme');
+				} else {
+					logUpI('Light mode is enabled. Setting light theme icon.');
+					setIcon('icon-light-theme');
+				}
 			} else {
-				logUpI('Light mode is enabled. Setting light theme icon.');
-				setIcon('icon-light-theme');
+				logUpI('Firefox detected. Skipping theme icon update.');
 			}
-		} else {
-			logUpI('Firefox detected. Skipping theme icon update.');
+		} else if (theme === "dark") {
+			logUpI('Dark mode is enabled. Setting dark theme icon.');
+			setIcon('icon-dark-theme');
+		} else if (theme === "light") {
+			logUpI('Light mode is enabled. Setting light theme icon.');
+			setIcon('icon-light-theme');
 		}
 
 		// Update badge and background color based on disabled status
@@ -976,14 +1033,6 @@ chrome.runtime.onMessage.addListener(
 		return true; // This tells the browser to keep sendResponse alive because we're sending the response asynchronously.
 	}
 );
-
-// Retrieve logging setting from storage
-chrome.storage.local.get({
-	logging: false
-}, function (obj) {
-	logCSLG('Retrieved logging setting from storage: ' + obj.logging);
-	//	log.enabled = obj.logging;
-});
 
 // Retrieve sync setting from storage and configure storage area accordingly
 chrome.storage.local.get({

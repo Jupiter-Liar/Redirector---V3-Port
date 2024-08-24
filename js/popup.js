@@ -17,7 +17,44 @@ function toggle(prop) {
 	});
 }
 
+function saveThemePreference(theme) {
+	storage.set({
+		themePreference: theme
+	}, function () {
+		//		console.log(`Theme preference saved: ${theme}`);
+		updateThemeIcons(theme);
+	});
+}
 
+function updateThemeIcons(theme) {
+	const themeIcons = {
+		dark: el('#icon-dark'),
+		light: el('#icon-light'),
+		auto: el('#auto')
+	};
+
+	// Reset all borders
+	for (let key in themeIcons) {
+		themeIcons[key].style.borderColor = ''; // Remove border color
+	}
+
+	// Set border color for the selected theme
+	if (themeIcons[theme]) {
+		themeIcons[theme].style.borderColor = 'red';
+	}
+}
+
+function handleThemeClick(event) {
+	//	console.log('handleThemeClick');
+	const theme = event.target.id.replace('icon-', '') || 'auto';
+	saveThemePreference(theme);
+
+	chrome.runtime.sendMessage({
+		type: 'update-icon'
+	}).catch(() => {
+		// Ignore errors without logging
+	});
+}
 
 function openRedirectorSettings() {
 
@@ -53,16 +90,23 @@ function pageLoad() {
 	storage.get({
 		logging: false,
 		enableNotifications: false,
-		disabled: false
+		disabled: false,
+		themePreference: 'auto' // Default value
 	}, function (obj) {
 		viewModel = obj;
 		applyBinding();
+		updateThemeIcons(obj.themePreference); // Update icons based on saved preference
 	})
 
 	el('#enable-notifications').addEventListener('input', () => toggle('enableNotifications'));
 	el('#enable-logging').addEventListener('input', () => toggle('logging'));
 	el('#toggle-disabled').addEventListener('click', () => toggle('disabled'));
 	el('#open-redirector-settings').addEventListener('click', openRedirectorSettings);
+
+	// Add event listeners for theme icons
+	el('#icon-dark').addEventListener('click', handleThemeClick);
+	el('#icon-light').addEventListener('click', handleThemeClick);
+	el('#auto').addEventListener('click', handleThemeClick);
 }
 
 pageLoad();
