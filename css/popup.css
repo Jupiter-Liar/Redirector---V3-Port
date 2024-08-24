@@ -1,4 +1,3 @@
-
 body {
 	width: 180px;
 	text-align: center;
@@ -19,39 +18,43 @@ h1 span {
 }
 
 button {
-	margin: 5px auto !important;
+
 	display: block;
 	width: 90%;
+	margin: 5px auto !important;
 }
 
 .disabled {
 	margin-top: -16px;
-	height: 13px;
 	color: red;
+	height: 13px;
 	font-size: 12px;
 }
 
 label {
-	margin: 6px auto;
 	display: block;
 	width: 85%;
 	text-align: left;
+	margin: 6px auto;
 	font-size: 12px !important;
+	display: flex;
+	align-items: center;
+	gap: .5em
 }
 
 /* Firefox only */
 @supports (-moz-appearance:none) {
-    	label input {
-        	position: relative;
-        	top: 1px;
-    	}
+	label input {
+		position: relative;
+		top: 1px;
+	}
 }
 
 button {
-	height: 20px;
 	border: solid 1px #aaa !important;
-	border-radius: 3px;
 	color: #333;
+	height: 20px;
+	border-radius: 3px;
 }
 
 label span {
@@ -62,27 +65,53 @@ label span {
 @media (prefers-color-scheme: dark) {
 
 	html {
-		background: rgb(52,53,56);
+		background: rgb(52, 53, 56);
 		color: #ddd;
 	}
 
-	h1,
+	h1 {
+		color: white;
+	}
+
 	label {
 		color: #eee;
 	}
 
 	th {
-		color: #eee;
+		color: white;
 		font-weight: normal;
 	}
 
 	.disabled span {
-		color: rgb(240,85,82);
+		color: rgb(252, 87, 84);
 	}
 
 	button {
+		background-color: rgb(32, 33, 36) !important;
 		border: solid 1px #777 !important;
-		background-color: rgb(32,33,36) !important;
 		color: #ddd;
 	}
+}
+
+#icon-settings {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: .5em;
+}
+
+#icon-settings > * {
+	cursor: pointer;
+	padding: .2em;
+	border: 2px solid rgba(0, 0, 0, 0);
+	/*	border-color: red;*/
+	border-radius: .4em;
+}
+
+#icon-settings img {
+	max-height: 16px;
+}
+
+#icon-settings span {
+	font-size: 14px !important;
 }
