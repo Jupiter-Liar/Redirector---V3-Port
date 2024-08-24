@@ -510,166 +510,180 @@ function setUpDeclarativeRedirects() {
 	// Unsubscribe first, in case there are changes...
 	//	logSUDR('Removing existing listeners');
 	// chrome.webRequest.onBeforeRequest.removeListener(checkRedirects);
-	chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
 
-	logSUDR('Retrieving redirects from storage');
-	storageArea.get({
-		redirects: []
-	}, function (obj) {
-		var redirects = obj.redirects;
-		logSUDR('Retrieved redirects from storage: ' + JSON.stringify(redirects));
-
-		if (redirects.length === 0) {
-			logSUDR('No redirects defined, not setting up listener');
+	chrome.storage.local.get({
+		disabled: false
+	}, function (result) {
+		if (result.disabled) {
+			logSUDR('Extension is disabled.');
 			return;
-		}
-
-		logSUDR('Processing redirects');
-
-		//		// Destructure the result and assign to existing variables
-		//		var {
-		//			processed: tempProcessed,
-		//			processedH: tempProcessedH
-		//		} = processStoredRedirects(redirects);
-		//
-		//		// Assign to already declared variables
-		//		processedRedirects = tempProcessed;
-		//		processedHistoryRedirects = tempProcessedH;
-
-		// Destructure the result and assign to existing variables
-		({
-			processed: processedRedirects,
-			processedH: processedHistoryRedirects
-		} = processStoredRedirects(redirects));
-
-		logSUDR('Processed redirects: ' + JSON.stringify(processedRedirects));
-		logSUDR('Processed history redirects: ' + JSON.stringify(processedHistoryRedirects));
-
-		//		logSUDR('Creating filter');
-		//		var filter = createFilter(redirects);
-		//		logSUDR('Created filter: ' + JSON.stringify(filter));
-
-		//		logSUDR('Setting filter for listener');
-		// chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter, ["blocking"]); // Blocking is dead.
-		//		chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter);
-		//		logSUDR('Added webRequest.onBeforeRequest listener with filter');
-
-		// Process each partitioned redirect
-		let allRules = [];
-
-		processedRedirects.forEach((redirect, index) => {
-			// Ensure resourceTypes only contains allowed values
-			if (redirect.condition && redirect.condition.resourceTypes) {
-				redirect.condition.resourceTypes = filterResourceTypes(redirect.condition.resourceTypes);
-			}
-
-			// Validate the rule
-			if (!validateRule(redirect)) {
-				logSUDR('Invalid rule discarded: ' + JSON.stringify(redirect));
-				return; // Skip invalid rules
-			}
-
-			// Check if regexSubstitution is empty and replace it with "about:blank"
-			// This fixes an error where broken rules prevent changes.
-			if (redirect.action && redirect.action.type === "redirect") {
-				if (!redirect.action.redirect.regexSubstitution) {
-					redirect.action.redirect.regexSubstitution = "about:blank";
-				}
-			}
-
-			// Assign a unique ID for each rule
-			redirect.id = allRules.length + 1;
-			redirect.priority = redirect.id;
-
-			allRules.push(redirect);
-		});
-
-		logSUDR('Formatted rules for declarativeNetRequest: ' + JSON.stringify(allRules));
-
-		//		// Update the declarativeNetRequest rules
-		//		chrome.declarativeNetRequest.updateDynamicRules({
-		//			removeRuleIds: allRules.map(rule => rule.id),
-		//			addRules: allRules
-		//		}, () => {
-		//			if (chrome.runtime.lastError) {
-		//				logSUDR('Error setting up redirect listener: ' + chrome.runtime.lastError.message);
-		//			} else {
-		//				logSUDR('Redirect listener setup completed with all rules applied.');
-		//			}
-		//		});
-
-
-
-		// Function to apply rules and handle errors
-		function applyRules(rules) {
-			// First, remove all existing rules
-			removeAllRules()
-				.then(() => {
-					// After rules are removed, create promises for applying each new rule
-					let applyRulePromises = rules.map(rule => new Promise((resolve, reject) => {
-						chrome.declarativeNetRequest.updateDynamicRules({
-							addRules: [rule]
-						}, () => {
-							if (chrome.runtime.lastError) {
-								logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
-								reject(new Error(chrome.runtime.lastError.message));
-							} else {
-								logSUDR(`Rule with id ${rule.id} applied successfully.`);
-								resolve(rule.id); // Resolve with the rule id
-							}
-						});
-					}));
-
-					// Wait for all apply rule promises to complete
-					return Promise.all(applyRulePromises);
-				})
-				.then((appliedRules) => {
-					logSUDR(`Applied rules: ${JSON.stringify(appliedRules)}`);
-				})
-				.catch((error) => {
-					logSUDR(`Error during rule application: ${error.message}`);
-				});
-		}
-
-		// Function to get the problematic rule ID from the error message
-		function getProblematicRuleId(errorMessage) {
-			// Extract the rule ID from the error message if possible (assuming the error message includes this info)
-			const match = errorMessage.match(/rule with ID (\d+)/);
-			return match ? parseInt(match[1], 10) : null;
-		}
-
-		// Start the rule application process
-		applyRules(allRules);
-
-		if (Array.isArray(processedHistoryRedirects)) {
-			logSUDR('processedHistoryRedirects is an array.');
-		}
-
-		if (processedHistoryRedirects.some(redirect => redirect.appliesTo.includes('history'))) {
-			logSUDR('Adding HistoryState Listener');
-
-
-			let historyFilter = {
-				url: []
-			};
-
-			for (let r of processedHistoryRedirects) {
-				// Check if `appliesTo` includes 'history'
-				let pattern = r._preparePattern(r.includePattern);
-				historyFilter.url.push({
-					urlMatches: pattern
-				});
-				logSUDR('Prepared history state pattern for filter: ' + pattern);
-			}
-
-			logSUDR('History state filter: ' + JSON.stringify(historyFilter));
-
-			chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
-			logSUDR('Added webNavigation.onHistoryStateUpdated listener with filter');
 		} else {
-			logSUDR('No history state redirects defined');
+			setUpRules();
 		}
 	});
+
+	function setUpRules() {
+		chrome.webNavigation.onHistoryStateUpdated.removeListener(checkHistoryStateRedirects);
+
+		logSUDR('Retrieving redirects from storage');
+		storageArea.get({
+			redirects: []
+		}, function (obj) {
+			var redirects = obj.redirects;
+			logSUDR('Retrieved redirects from storage: ' + JSON.stringify(redirects));
+
+			if (redirects.length === 0) {
+				logSUDR('No redirects defined, not setting up listener');
+				return;
+			}
+
+			logSUDR('Processing redirects');
+
+			//		// Destructure the result and assign to existing variables
+			//		var {
+			//			processed: tempProcessed,
+			//			processedH: tempProcessedH
+			//		} = processStoredRedirects(redirects);
+			//
+			//		// Assign to already declared variables
+			//		processedRedirects = tempProcessed;
+			//		processedHistoryRedirects = tempProcessedH;
+
+			// Destructure the result and assign to existing variables
+			({
+				processed: processedRedirects,
+				processedH: processedHistoryRedirects
+			} = processStoredRedirects(redirects));
+
+			logSUDR('Processed redirects: ' + JSON.stringify(processedRedirects));
+			logSUDR('Processed history redirects: ' + JSON.stringify(processedHistoryRedirects));
+
+			//		logSUDR('Creating filter');
+			//		var filter = createFilter(redirects);
+			//		logSUDR('Created filter: ' + JSON.stringify(filter));
+
+			//		logSUDR('Setting filter for listener');
+			// chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter, ["blocking"]); // Blocking is dead.
+			//		chrome.webRequest.onBeforeRequest.addListener(checkRedirects, filter);
+			//		logSUDR('Added webRequest.onBeforeRequest listener with filter');
+
+			// Process each partitioned redirect
+			let allRules = [];
+
+			processedRedirects.forEach((redirect, index) => {
+				// Ensure resourceTypes only contains allowed values
+				if (redirect.condition && redirect.condition.resourceTypes) {
+					redirect.condition.resourceTypes = filterResourceTypes(redirect.condition.resourceTypes);
+				}
+
+				// Validate the rule
+				if (!validateRule(redirect)) {
+					logSUDR('Invalid rule discarded: ' + JSON.stringify(redirect));
+					return; // Skip invalid rules
+				}
+
+				// Check if regexSubstitution is empty and replace it with "about:blank"
+				// This fixes an error where broken rules prevent changes.
+				if (redirect.action && redirect.action.type === "redirect") {
+					if (!redirect.action.redirect.regexSubstitution) {
+						redirect.action.redirect.regexSubstitution = "about:blank";
+					}
+				}
+
+				// Assign a unique ID for each rule
+				redirect.id = allRules.length + 1;
+				redirect.priority = redirect.id;
+
+				allRules.push(redirect);
+			});
+
+			logSUDR('Formatted rules for declarativeNetRequest: ' + JSON.stringify(allRules));
+
+			//		// Update the declarativeNetRequest rules
+			//		chrome.declarativeNetRequest.updateDynamicRules({
+			//			removeRuleIds: allRules.map(rule => rule.id),
+			//			addRules: allRules
+			//		}, () => {
+			//			if (chrome.runtime.lastError) {
+			//				logSUDR('Error setting up redirect listener: ' + chrome.runtime.lastError.message);
+			//			} else {
+			//				logSUDR('Redirect listener setup completed with all rules applied.');
+			//			}
+			//		});
+
+
+
+			// Function to apply rules and handle errors
+			function applyRules(rules) {
+				// First, remove all existing rules
+				removeAllRules()
+					.then(() => {
+						// After rules are removed, create promises for applying each new rule
+						let applyRulePromises = rules.map(rule => new Promise((resolve, reject) => {
+							chrome.declarativeNetRequest.updateDynamicRules({
+								addRules: [rule]
+							}, () => {
+								if (chrome.runtime.lastError) {
+									logSUDR(`Error applying rule with id ${rule.id}: ${chrome.runtime.lastError.message}`);
+									reject(new Error(chrome.runtime.lastError.message));
+								} else {
+									logSUDR(`Rule with id ${rule.id} applied successfully.`);
+									resolve(rule.id); // Resolve with the rule id
+								}
+							});
+						}));
+
+						// Wait for all apply rule promises to complete
+						return Promise.all(applyRulePromises);
+					})
+					.then((appliedRules) => {
+						logSUDR(`Applied rules: ${JSON.stringify(appliedRules)}`);
+					})
+					.catch((error) => {
+						logSUDR(`Error during rule application: ${error.message}`);
+					});
+			}
+
+			// Function to get the problematic rule ID from the error message
+			function getProblematicRuleId(errorMessage) {
+				// Extract the rule ID from the error message if possible (assuming the error message includes this info)
+				const match = errorMessage.match(/rule with ID (\d+)/);
+				return match ? parseInt(match[1], 10) : null;
+			}
+
+			// Start the rule application process
+			applyRules(allRules);
+
+			if (Array.isArray(processedHistoryRedirects)) {
+				logSUDR('processedHistoryRedirects is an array.');
+			}
+
+			if (processedHistoryRedirects.some(redirect => redirect.appliesTo.includes('history'))) {
+				logSUDR('Adding HistoryState Listener');
+
+
+				let historyFilter = {
+					url: []
+				};
+
+				for (let r of processedHistoryRedirects) {
+					// Check if `appliesTo` includes 'history'
+					let pattern = r._preparePattern(r.includePattern);
+					historyFilter.url.push({
+						urlMatches: pattern
+					});
+					logSUDR('Prepared history state pattern for filter: ' + pattern);
+				}
+
+				logSUDR('History state filter: ' + JSON.stringify(historyFilter));
+
+				chrome.webNavigation.onHistoryStateUpdated.addListener(checkHistoryStateRedirects, historyFilter);
+				logSUDR('Added webNavigation.onHistoryStateUpdated listener with filter');
+			} else {
+				logSUDR('No history state redirects defined');
+			}
+		});
+	}
 }
 
 // Function to filter resource types
