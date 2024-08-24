@@ -19,6 +19,7 @@
 		<li><a href="#will-redirects-work">Will my redirects still work?</a></li>
 		<li><a href="#exceptions-different">How exceptions will be different</a></li>
 		<li><a href="#managing-exceptions">Guidelines for managing exceptions</a></li>
+		<li><a href="#notifications">Notifications</a></li>
 		<li><a href="#RE2">Regular expressions (regex): RE2</a></li>
 	</ul>
 
@@ -160,6 +161,14 @@
 			</ul>
 		</li>
 	</ul>
+
+	<a name="notifications"></a>
+	<h4>Notifications</h4>
+	<p>In the previous version of Redirector, all redirects passed through a function that figured out what to do with them. This function was responsible for generating notifications, if that option was enabled via the popup menu (the menu that comes up when you click the extension's icon).</p>
+
+	<p>However, with declarativeNetRequest, most redirects don't use this function anymore. They don't have to. They're handled in a newer and more efficient way. Which is good.</p>
+
+	<p>The downside is, the redirects now occur at a level where our code can't reach them. This means it can't trigger notifications for them anymore. The one kind of redirect that still passes through the old function is the HistoryState type. Such redirects may still be able to trigger notifications. All others will not.</p>
 
 	<a name="RE2"></a>
 	<h4>Regular expressions (regex): RE2</h4>
