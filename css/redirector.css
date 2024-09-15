@@ -227,7 +227,7 @@ input[type="radio"] {
 }
 
 .redirect-row.enabled:has([data-show="excludePattern"]:not([style="display: none;"])) {
-	box-shadow: inset 0 0 0 .4em hsla(0, 100%, 50%, 50%);
+	box-shadow: inset 0 0 0 .4em hsla(240, 100%, 50%, 25%);
 }
 
 .redirect-info {
