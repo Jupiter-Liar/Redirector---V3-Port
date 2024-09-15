@@ -15,10 +15,12 @@
 
 	<ul>
 		<li><a href="#why-change">Why do things need to change?</a></li>
-		<li><a href="#why-borders">Why are there reddish borders around certain rules?</a></li>
+
 		<li><a href="#will-redirects-work">Will my redirects still work?</a></li>
 		<li><a href="#exceptions-different">How exceptions will be different</a></li>
+		<li><a href="#hidden-order">The hidden order, under the hood</a></li>
 		<li><a href="#managing-exceptions">Guidelines for managing exceptions</a></li>
+		<li><a href="#why-borders">Why are there bluish borders around certain rules?</a></li>
 		<li><a href="#notifications">Notifications</a></li>
 		<li><a href="#RE2">Regular expressions (regex): RE2</a></li>
 	</ul>
@@ -30,15 +32,14 @@
 
 	<p>That something else is the <b>declarativeNetRequest</b> API. It has some real benefits. It's a lot more efficient than the old webRequest methods of redirection, and it requires less code, too. But it also brings some new challenges.</p>
 
-	<a name="why-borders"></a>
-	<h4>Why are there reddish borders around certain rules?</h4>
 
-	<p>Rules which have exceptions, and are enabled, will now have a reddish border, to make them easier to identify. The reason will <a href="#why-borders-2">become clear</a>.</p>
 
 	<a name="will-redirects-work"></a>
 	<h4>Will my redirects still work?</h4>
 
-	<p>That depends on your redirects. A few things are going to be different now. First, let's get some of the simpler things out of the way:</p>
+	<p>That depends on your redirects. If you only ever used the simplest options, nothing will change. But if you used advanced options, a few things are going to be different now.</p>
+
+	<p>First, let's get some of the simpler things out of the way:</p>
 
 	<ul class="fields">
 		<li><strong>Work in progress:</strong> As you have in your hands an <b>alpha</b> build, some things that <i>should</i> work might not. The new development team would appreciate any feedback about things that don't work.</li>
@@ -49,7 +50,7 @@
 	<a name="exceptions-different"></a>
 	<h4>How exceptions will be different</h4>
 
-	<p>This will be the biggest stumbling block. Exceptions to rules, which are specified in the <b>advanced options</b> for rules — specifically the <b>"Exclude pattern"</b> option — will be handled differently from now on. This is unavoidable.</p>
+	<p>This is the biggest change, and the one most likely to cause trouble. Exceptions to rules, which are specified in the <b>advanced options</b> for rules — specifically the <b>"Exclude pattern"</b> option — will be handled differently from now on. This is unavoidable — but not insurmountable.</p>
 
 	<p>To understand why, there are two important things to know:</p>
 
@@ -62,7 +63,7 @@
 		<li><strong>Rules have priorities.</strong> Rules that have higher priorities override rules that have lower priorities.</li>
 	</ol>
 
-	<p>So you may have guessed how exceptions are handled within this framework. First, the basic rule is declared, and its action is "redirect". Then the exception is declared as its own rule, and its action is "allow". That is how we are able to give rules exceptions.</p>
+	<p>So you may have guessed how exceptions are handled within this framework. First, the basic rule is declared, and its action is "redirect". Then the exception is declared as its own separate rule, and its action is "allow". That is how we are able to give rules exceptions.</p>
 
 	<p>You may have also guessed the problem. An exception doesn't just apply to its parent rule, because in this framework, there is no such thing as a parent rule. The exception applies to ALL rules with a lower priority. This means that <b>an exception to one rule could interfere with several other rules</b>.</p>
 
@@ -75,9 +76,23 @@
 
 	<p>This is handled by Redirector's internal logic. The rules will stay in the same order on the settings page. But under the hood, Redirector will put things into a different order.</p>
 
-	<p>If a rule has no exceptions, it may be overruled by a different rule that also doesn't have exceptions. This different rule, of course, would come higher on the settings page, in keeping with Einar's system. <b>But no matter what order the rules come in, a rule that has exceptions cannot overrule a rule that has no exceptions.</b> This is intended to reduce the number of possible conflicts.</p>
+	<a name="hidden-order"></a>
+	<h4>The hidden order, under the hood</h4>
 
-	<p>To make this easier to understand, let's present a list of rules. The URLs are not important for this example; all that matters here is the order and whether or not they have exceptions.</p>
+	<p>Internally, Redirector places its rules in the following order:</p>
+
+	<ol>
+		<li>Rules that don't have exceptions, from top to bottom</li>
+		<li>Rules that have exceptions, one by one, from top to bottom, in the following format:</li>
+		<ol type="a">
+			<li>The exception</li>
+			<li>The basic rule</li>
+		</ol>
+	</ol>
+
+	<p>This ordering system reduces the number of possible conflicts. <b>No matter what, rules that have exceptions cannot overrule rules that do not have exceptions.</b> They can only overrule one another.</p>
+
+	<p>To better illustrate this, let's present a list of rules. The URLs are not important for this example; all that matters here is the order and whether or not they have exceptions.</p>
 
 	<ol>
 		<li>Rule 1, with exception</li>
@@ -86,7 +101,7 @@
 		<li>Rule 4</li>
 	</ol>
 
-	<p>How will these rules be handled, in the event of conflicts? If the rules were a list, where the higher a rule was on the list, the more important it would be, the list would look like this:</p>
+	<p>The rules will be oraginzed under the hood, and thus prioritized, in the following order:</p>
 
 	<ol>
 		<li>Rule 2</li>
@@ -97,7 +112,9 @@
 		<li>Rule 3 without its exception</li>
 	</ol>
 
-	<p>Under the hood, this is how Redirector's internal logic will organize the rules. First, we have the rules that don't have exceptions. Nothing lower on the list can overrule them. Then we have the rules that do have exceptions, with each rule's exception coming before that rule. Rule 1's exception can overrule Rule 1. It can also overrule Rule 3 and its exception. The basic form of Rule 1, without its exception, can also overrule Rule 3 and its exception. And Rule 3's exception can only overrule Rule 3.</p>
+	<p>First, we have the rules that don't have exceptions. Then we have the rules that do have exceptions, with each rule's exception coming before that rule.</p>
+
+	<p>Note how the rules with exceptions will be handled, because this differs from older versions of Redirector. Rule 1's exception can overrule Rule 1. It can also overrule Rule 3 and its exception. The basic form of Rule 1, without its exception, can also overrule Rule 3 and its exception. And Rule 3's exception can only overrule Rule 3.</p>
 
 	<p>This minimizes the problem of conflicts, by limiting how many rules exceptions can interfere with. But design choices cannot eliminate the problem completely. Somewhere down the line, the exception from one rule may still interfere with a different rule.</p>
 
@@ -110,12 +127,9 @@
 	<p>Avoiding unwanted conflicts between rules is possible, as long as the rules are set up correctly. This has always been the case with this extension; it's just a little different now. So here are some guidelines:</p>
 
 	<ul>
-		<li><strong>Define exceptions NARROWLY.</strong> This is the most important guideline. If you define an exception broadly, there could be all kinds of conflicts. So define the exception as narrowly as possible, so it will only affect the rule you want it to affect.</li>
+		<li><strong>Define exceptions NARROWLY.</strong> This is the most important guideline. If you define an exception broadly, there could be all kinds of conflicts. So define the exception as narrowly as possible, to limit which rules it can affect.</li>
 		<li><strong>Use the order of rules on the settings page to raise or lower their priorities.</strong> This logic was established with Einar's versions of Redirector, and it still applies, so long as both rules have exceptions or both rules do not. If one rule overrules another, and you want it to be the opposite way around, changing the order of the rules can solve your problem.</li>
 	</ul>
-
-	<a name="why-borders-2"></a>
-	<p>Because rules with exceptions may cause problems, when they are enabled, they now feature a <b>reddish border</b>. This makes them easier to spot when troubleshooting conflicts.</p>
 
 	<p>To recap:</p>
 
@@ -161,6 +175,11 @@
 			</ul>
 		</li>
 	</ul>
+
+	<a name="why-borders"></a>
+	<h4>Why are there bluish borders around certain rules?</h4>
+
+	<p>Because rules with exceptions may conflict with one another, they will now have a bluish border when they are enabled, to make them easier to identify during troubleshooting.</p>
 
 	<a name="notifications"></a>
 	<h4>Notifications</h4>
