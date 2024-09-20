@@ -4,6 +4,7 @@
 <head>
 	<title>REDIRECTOR</title>
 	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<link rel="stylesheet" href="css/redirector.css" />
 	<!-- ☈ -->
 	<link rel="shortcut icon" href="images/icon-light-theme-32.png">
@@ -14,7 +15,7 @@
 	</div>
 
 	<!-- Confirmation form for deleting redirects -->
-	<div id="delete-redirect-form">
+	<div id="delete-redirect-form" class="popup-form">
 		<h3>Are you sure you want to delete this redirect?</h3>
 		<div>
 			<label>Description:</label>
@@ -44,7 +45,7 @@
 
 
 	<!-- Form for creating and editing redirects -->
-	<div id="edit-redirect-form">
+	<div id="edit-redirect-form" class="popup-form">
 		<h3>Create Redirect</h3>
 		<div class="form-grid">
 			<div>
@@ -106,14 +107,43 @@
 				<label>Apply to:</label>
 				<div class="input-cell" id="apply-to" data-bind="appliesTo">
 					<label><input type="checkbox" checked="checked" value="main_frame"><span>Main window (address bar)</span></label>
+
 					<label><input type="checkbox" value="sub_frame"><span>IFrames</span></label>
+
 					<label><input type="checkbox" value="stylesheet"><span>Stylesheets</span></label>
+
+					<label>
+						<input type="checkbox" value="font"><span>Fonts</span>
+					</label>
+
 					<label><input type="checkbox" value="script"><span>Scripts</span></label>
+
 					<label><input type="checkbox" value="image"><span>Images</span></label>
+
 					<label><input type="checkbox" value="imageset"><span>Responsive Images in Firefox</span></label>
+
 					<label><input type="checkbox" value="object"><span>Objects (e.g. Flash videos, Java applets)</span></label>
+
+					<label><input type="checkbox" value="media"><span>Media</span></label>
+
+					<label>
+						<input type="checkbox" value="object_subrequest"><span>Object subrequests</span>
+					</label>
+
 					<label><input type="checkbox" value="xmlhttprequest"><span>XMLHttpRequests (Ajax)</span></label>
+
 					<label><input type="checkbox" value="history"><span>HistoryState</span></label>
+
+					<label><input type="checkbox" value="ping"><span>Ping</span></label>
+
+					<label><input type="checkbox" value="webbundle"><span>Web Bundle</span></label>
+
+					<label><input type="checkbox" value="websocket"><span>Web Socket</span></label>
+
+					<label><input type="checkbox" value="webtransport"><span>Web Transport</span></label>
+
+					<label><input type="checkbox" value="csp_report"><span>CSP Report</span></label>
+
 					<label><input type="checkbox" value="other"><span>Other</span></label>
 				</div>
 			</div>
@@ -124,6 +154,22 @@
 		</div>
 	</div>
 
+	<!-- Import Popup -->
+	<div id="import-popup" class="popup-form">
+		<div class="popup-content">
+			<h3>Would you like to...</h3>
+			<input type="file" id="import-file-popup" style="display: none;" accept=".rjson,.json,.txt" />
+			<button id="import-file-popup-cb" class="btn blue large">Import From File</button>
+			<h3>OR</h3>
+			<div class="input-cell">
+				<input type="url" id="import-url-popup" placeholder="Enter URL..." autocomplete="off" />
+			</div>
+			<button id="import-url-button" class="btn blue large">Fetch and Import</button>
+			<div class="button-container">
+				<button id="cancel-import" class="btn grey large">Cancel</button>
+			</div>
+		</div>
+	</div>
 
 	<div id="blur-wrapper">
 
@@ -150,8 +196,10 @@
 
 
 		<div id="message-box">
-			<span data-bind="message" id="message"></span>
-			<a id="hide-message">&#x2716;</a>
+			<div id="message-box-overflow-wrapper">
+				<span data-bind="message" id="message"></span>
+				<a id="hide-message">&#x2716;</a>
+			</div>
 		</div>
 
 		<!-- List of existing redirects -->
@@ -189,6 +237,7 @@
 						<button class="btn medium blue" data-action="toggleDisabled"><span data-show="disabled">Enable</span><span data-show="!disabled">Disable</span></button>
 						<button class="btn medium green" data-action="editRedirect">Edit</button>
 						<button class="btn medium red" data-action="confirmDeleteRedirect">Delete</button>
+						<button class="btn medium grey" data-action="duplicateRedirect">Duplicate</button>
 						<span class="hidden">
 							<button class="btn medium grey move-uptop-btn arrows" data-action="moveUpTop" data-disabled="$first">⟰</button>
 						</span>
