@@ -23,6 +23,7 @@
 		<li><a href="#why-borders">Why are there bluish borders around certain rules?</a></li>
 		<li><a href="#notifications">Notifications</a></li>
 		<li><a href="#RE2">Regular expressions (regex): RE2</a></li>
+		<li><a href="#encoding-decoding">Encoding/Decoding</a></li>
 	</ul>
 
 	<a name="why-change"></a>
@@ -197,6 +198,11 @@
 	<p>This is the reason that the handling of exceptions had to change. With a more versatile form of regex, there could have been rules that built their exceptions into regex in the form of lookahead. But with RE2, that can't be done.</p>
 
 	<p>Any rules that use a more elaborate form of regex will have to be rewritten in an RE2 format. Some complex rules may not be able to be rewritten in RE2. And this is unfortunate. It's also unavoidable. However, using additional rules and careful use of ordering and/or exceptions, it should be possible to build any kind of redirect scheme desired.</p>
+
+	<a name="encoding-decoding"></a>
+	<h4>Encoding/Decoding</h4>
+
+	<p>Redirector previously had the ability to decode or encode parts of URLs. However, with the new framework, this will likely be impossible. Perhaps in the future, some workaround will be found. But for now, rules that involve encoding or decoding simply will not work.</p>
 </body>
 
 </html>
