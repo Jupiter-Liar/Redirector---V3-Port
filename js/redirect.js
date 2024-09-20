@@ -24,15 +24,16 @@ Redirect.requestTypes = {
 	main_frame: "Main window (address bar)",
 	sub_frame: "IFrames",
 	stylesheet: "Stylesheets",
+	font: "Fonts",
 	script: "Scripts",
 	image: "Images",
 	imageset: "Responsive Images in Firefox",
 	object: "Objects (e.g. Flash content, Java applets)",
+	object_subrequest: "Object subrequests",
 	xmlhttprequest: "XMLHttpRequests (Ajax)",
 	history: "HistoryState",
 	other: "Other"
 };
-
 
 Redirect.prototype = {
 

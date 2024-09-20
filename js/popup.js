@@ -9,11 +9,19 @@ function toggle(prop) {
 	storage.get({
 		[prop]: false
 	}, function (obj) {
+		const newValue = !obj[prop]; // Get the new value we're setting
+
+		// Update the storage and viewModel
 		storage.set({
-			[prop]: !obj[prop]
+            [prop]: newValue
 		});
-		viewModel[prop] = !obj[prop];
+		viewModel[prop] = newValue;
 		applyBinding();
+
+		// If the prop is 'disabled', pass the new value to handleDisabledState
+		if (prop === 'disabled') {
+			handleDisabledState(newValue);
+		}
 	});
 }
 
@@ -85,6 +93,15 @@ function openRedirectorSettings() {
 	return;
 };
 
+function handleDisabledState(disabled) {
+	if (disabled) {
+		// Add the 'disabled' attribute to the body
+		document.body.setAttribute('disabled', 'true');
+	} else {
+		// Remove the 'disabled' attribute from the body
+		document.body.removeAttribute('disabled');
+	}
+}
 
 function pageLoad() {
 	storage.get({
@@ -96,6 +113,11 @@ function pageLoad() {
 		viewModel = obj;
 		applyBinding();
 		updateThemeIcons(obj.themePreference); // Update icons based on saved preference
+
+		// Hide or show the disabled div
+		if (obj.disabled) {
+			handleDisabledState(true); // Perform actions when disabled is true
+		}
 	})
 
 	el('#enable-notifications').addEventListener('input', () => toggle('enableNotifications'));

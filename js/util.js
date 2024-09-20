@@ -105,6 +105,9 @@ function hideForm(selector) {
 	el('#blur-wrapper').classList.remove('blur');
 }
 
+// Declare a variable to store the timer outside the function
+let messageTimeout;
+
 // Shows a message bar above the list of redirects.
 function showMessage(message, success) {
 	let messageBox = document.getElementById('message-box');
@@ -117,10 +120,15 @@ function showMessage(message, success) {
 		messageBox.className = 'visible error';
 	}
 
+	// Clear the previous timer if it exists
+	if (messageTimeout) {
+		clearTimeout(messageTimeout);
+	}
+
 	let timer = 20;
 
 	//Remove the message in 20 seconds if it hasn't been changed...
-	setTimeout(function () {
+	messageTimeout = setTimeout(function () {
 		if (el('#message').textContent === message) {
 			messageBox.className = ''; //Removing .visible removes the box...
 		}

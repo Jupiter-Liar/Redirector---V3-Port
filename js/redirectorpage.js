@@ -277,29 +277,39 @@ function moveDownBottom(index) {
 	saveChanges();
 }
 
-//All the setup stuff for the page
-function pageLoad() {
-	template = el('#redirect-row-template');
-	template.parentNode.removeChild(template);
+//// Called when importing, to prevent duplication on the page and subsequent errors
+//function clearRedirects() {
+//	const redirectRows = document.querySelectorAll('.redirect-row');
+//
+//	// Loop through each element and remove it from the DOM
+//	redirectRows.forEach(function (row) {
+//		row.remove();
+//	});
+//}
 
+// Called at page load
+function retrieveAndRenderRedirects() {
 	//Need to proxy this through the background page, because Firefox gives us dead objects
 	//nonsense when accessing chrome.storage directly.
+
+	// REDIRECTS = [];
+
 	chrome.runtime.sendMessage({
 		type: "get-redirects"
 	}, function (response) {
-		console.log('Received redirects message, count=' + response.redirects.length);
+		//console.log(`Received redirects message, count=${response.redirects.length}`);
 		for (var i = 0; i < response.redirects.length; i++) {
 			REDIRECTS.push(new Redirect(response.redirects[i]));
 		}
 
 		if (response.redirects.length === 0) {
-			//Add example redirect for first time users...
+			//console.log("First run, adding example rule")
 			REDIRECTS.push(new Redirect({
-				"description": "Example redirect, try going to http://example.com/anywordhere",
-				"exampleUrl": "http://example.com/some-word-that-matches-wildcard",
+				"description": "Example redirect, try going to https://example.com/anywordhere",
+				"exampleUrl": "https://example.com/some-word-that-matches-wildcard",
 				"exampleResult": "https://google.com/search?q=some-word-that-matches-wildcard",
 				"error": null,
-				"includePattern": "http://example.com/*",
+				"includePattern": "https://example.com/*",
 				"excludePattern": "",
 				"patternDesc": "Any word after example.com leads to google search for that word.",
 				"redirectUrl": "https://google.com/search?q=$1",
@@ -307,12 +317,21 @@ function pageLoad() {
 				"processMatches": "noProcessing",
 				"disabled": false,
 				"appliesTo": [
-						"main_frame"
-					]
+					"main_frame"
+				]
 			}));
 		}
 		renderRedirects();
 	});
+}
+
+
+//All the setup stuff for the page
+function pageLoad() {
+	template = el('#redirect-row-template');
+	template.parentNode.removeChild(template);
+
+	retrieveAndRenderRedirects();
 
 	chrome.storage.local.get({
 		isSyncEnabled: false
@@ -370,6 +389,20 @@ function toggleGrouping(index) {
 	if (REDIRECTS[index]) {
 		REDIRECTS[index].grouped = !REDIRECTS[index].grouped;
 	}
+}
+
+// Clicking the cover overlay closes whichever popups may be open, except the general edit form, because that could result in a loss of editing work
+document.getElementById('cover').addEventListener('click', closePopups);
+
+function closePopups() {
+	document.getElementById('import-popup').style.display = 'none';
+	document.getElementById('delete-redirect-form').style.display = 'none';
+
+	if (document.getElementById('edit-redirect-form').style.display != 'block') {
+		document.getElementById('cover').style.display = 'none';
+		blurWrapper.classList.remove("blur");
+	}
+
 }
 
 pageLoad();
